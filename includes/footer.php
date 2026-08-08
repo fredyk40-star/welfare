@@ -53,6 +53,34 @@
         updateOnlineStatus();
     </script>
 
+    <!-- Modal failsafe: force-clean stuck backdrops / modal-open / overflow lock -->
+    <script>
+        document.addEventListener('click', function(event) {
+            if (event.target.classList.contains('modal') || event.target.classList.contains('btn-close')) {
+                setTimeout(function() {
+                    if (!document.querySelector('.modal.show')) {
+                        document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
+                        document.body.classList.remove('modal-open');
+                        document.body.style.overflow = '';
+                        document.body.style.paddingRight = '';
+                    }
+                }, 300);
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', function() {
+            var modals = document.querySelectorAll('.modal');
+            modals.forEach(function(modal) {
+                modal.addEventListener('hidden.bs.modal', function() {
+                    document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
+                    document.body.classList.remove('modal-open');
+                    document.body.style.overflow = '';
+                    document.body.style.paddingRight = '';
+                });
+            });
+        });
+    </script>
+
 </body>
 </html>
 

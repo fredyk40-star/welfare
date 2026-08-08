@@ -65,13 +65,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     $reset_link = APP_URL . '/member/reset-password.php?token=' . $token;
                     $subject = 'Password Reset - ' . APP_NAME;
+                    $safe_full_name = sanitizeEmailValue($user['full_name']);
                     $message = "
                     <html>
                     <head>
                         <title>Password Reset</title>
                     </head>
                     <body>
-                        <p>Hello " . htmlspecialchars($user['full_name']) . ",</p>
+                        <p>Hello " . htmlspecialchars($safe_full_name) . ",</p>
                         <p>You requested a password reset for your " . APP_NAME . " account.</p>
                         <p>Click the link below to reset your password:</p>
                         <p><a href='$reset_link'>$reset_link</a></p>

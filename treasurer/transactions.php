@@ -469,16 +469,6 @@ function viewReceipt(transactionId) {
                 'Receipt', 'width=600,height=400');
 }
 
-let _paymentModalInstance = null;
-function openPaymentModal() {
-    const el = document.getElementById('paymentModal');
-    if (!el) return;
-    if (!_paymentModalInstance) {
-        _paymentModalInstance = new bootstrap.Modal(el, { backdrop: true, keyboard: true });
-    }
-    _paymentModalInstance.show();
-}
-
 // Export functions
 <?php if (isset($_GET['export'])): ?>
     <?php if ($_GET['export'] == 'csv'): ?>
@@ -486,6 +476,32 @@ function openPaymentModal() {
         window.location.href = '<?php echo APP_URL; ?>/api/transactions.php?action=export_csv';
     <?php endif; ?>
 <?php endif; ?>
+
+// Pre-select member when redirected from members page with ?member_id=...&member_name=...
+(function() {
+    var params = new URLSearchParams(window.location.search);
+    var memberId = params.get('member_id');
+    var memberName = params.get('member_name');
+    if (memberId && memberName) {
+        // Wait for modal to be ready after global openPaymentModal fires
+        var trySelect = function() {
+            var idField = document.getElementById('selectedMemberId');
+            var nameField = document.getElementById('selectedMemberName');
+            var searchField = document.getElementById('memberSearch');
+            if (idField && nameField) {
+                idField.value = memberId;
+                nameField.textContent = decodeURIComponent(memberName);
+                if (searchField) searchField.value = decodeURIComponent(memberName);
+                var submitBtn = document.getElementById('submitPayment');
+                if (submitBtn) submitBtn.disabled = false;
+                document.getElementById('searchResults').innerHTML = '';
+                return;
+            }
+            setTimeout(trySelect, 200);
+        };
+        trySelect();
+    }
+})();
 </script>
 
 <style>

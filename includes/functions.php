@@ -78,21 +78,48 @@ function logAudit($user_id, $action) {
     ]);
 }
 
+// Strip characters used for email header/body injection (CRLF, bare LF/CR, NUL)
+function sanitizeEmailValue($value) {
+    if (!is_string($value)) {
+        $value = (string) $value;
+    }
+    return str_replace(["\r", "\n", "\0"], '', $value);
+}
+
 function sendEmail($to, $subject, $message) {
+    // Prevent header injection: recipient and subject must never contain CRLF/NUL
+    $to = sanitizeEmailValue($to);
+    $subject = sanitizeEmailValue($subject);
+
+    // Only send to a valid email address
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+        error_log('sendEmail aborted: invalid recipient "' . $to . '"');
+        return false;
+    }
+
     $headers = "From: " . APP_NAME . " <noreply@gyf.org>\r\n";
     $headers .= "Reply-To: noreply@gyf.org\r\n";
     $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
-    
+
     return mail($to, $subject, $message, $headers);
 }
 
 function sendReceiptEmail($member_email, $receipt_data, $member_photo = null) {
+    // Sanitize all recipient/header/body inputs to block injection
+    $member_email = sanitizeEmailValue($member_email);
+    $safe = [];
+    foreach ($receipt_data as $key => $value) {
+        $safe[$key] = sanitizeEmailValue($value);
+    }
+    // Re-apply HTML escaping for body safety
+    $safe = array_map('htmlspecialchars', $safe);
+
     $photo_html = '';
     if ($member_photo && file_exists(UPLOAD_DIR . 'photos/' . $member_photo)) {
         $photo_url = APP_URL . '/uploads/photos/' . $member_photo;
         $photo_html = '<img src="' . $photo_url . '" alt="Member Photo" style="width: 100px; height: 100px; border-radius: 50%; object-fit: cover; border: 3px solid #1976d2; margin-bottom: 15px;">';
     }
-    
+
     $subject = 'Payment Receipt - ' . APP_NAME;
     $message = '
     <html>
@@ -124,15 +151,15 @@ function sendReceiptEmail($member_email, $receipt_data, $member_photo = null) {
                 <div class="receipt-details">
                     <div class="row">
                         <span>Receipt No:</span>
-                        <strong>' . htmlspecialchars($receipt_data['receipt_no']) . '</strong>
+                        <strong>' . $safe['receipt_no'] . '</strong>
                     </div>
                     <div class="row">
                         <span>Member Name:</span>
-                        <strong>' . htmlspecialchars($receipt_data['member_name']) . '</strong>
+                        <strong>' . $safe['member_name'] . '</strong>
                     </div>
                     <div class="row">
                         <span>Member ID:</span>
-                        <strong>' . htmlspecialchars($receipt_data['member_id']) . '</strong>
+                        <strong>' . $safe['member_id'] . '</strong>
                     </div>
                     <div class="row">
                         <span>Amount:</span>
@@ -140,11 +167,11 @@ function sendReceiptEmail($member_email, $receipt_data, $member_photo = null) {
                     </div>
                     <div class="row">
                         <span>Payment Method:</span>
-                        <strong>' . htmlspecialchars($receipt_data['payment_method']) . '</strong>
+                        <strong>' . $safe['payment_method'] . '</strong>
                     </div>
                     <div class="row">
                         <span>Billing Period:</span>
-                        <strong>' . htmlspecialchars($receipt_data['billing_period']) . '</strong>
+                        <strong>' . $safe['billing_period'] . '</strong>
                     </div>
                     <div class="row">
                         <span>Date:</span>
@@ -154,14 +181,14 @@ function sendReceiptEmail($member_email, $receipt_data, $member_photo = null) {
                 
                 <div class="footer">
                     <p>This is an automated receipt. Please keep it for your records.</p>
-                    <p>&copy; ' . date('Y') . ' GYF Ministry & Prayer Camp. All rights reserved.</p>
+                    <p>&copy; ' . date('Y') . ' GYF Ministry &amp; Prayer Camp. All rights reserved.</p>
                 </div>
             </div>
         </div>
     </body>
     </html>
     ';
-    
+
     return sendEmail($member_email, $subject, $message);
 }
 

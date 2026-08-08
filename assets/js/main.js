@@ -72,3 +72,47 @@ window.addEventListener('appinstalled', () => {
     console.log('GYF Welfare app installed');
     deferredPrompt = null;
 });
+
+// --- Modal safety: force-remove lingering backdrops and scroll locks ---
+// Prevents the grey overlay / page freeze when a modal is closed.
+document.addEventListener('DOMContentLoaded', function () {
+    const paymentModalEl = document.getElementById('paymentModal');
+
+    if (paymentModalEl) {
+        paymentModalEl.addEventListener('hidden.bs.modal', function () {
+            document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+        });
+    }
+
+    // Global fallback: clean up any stray backdrops left behind on the page
+    document.addEventListener('hidden.bs.modal', function (e) {
+        if (!document.querySelector('.modal.show')) {
+            document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+        }
+    });
+});
+
+// Robust modal opener: clears stray backdrops before opening a fresh instance
+let _paymentModalInstance = null;
+
+function openPaymentModal() {
+    const el = document.getElementById('paymentModal');
+    if (!el) return;
+
+    // Clean up any stray backdrops before opening
+    document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+
+    if (!_paymentModalInstance) {
+        _paymentModalInstance = new bootstrap.Modal(el, {
+            backdrop: true,
+            keyboard: true
+        });
+    }
+    _paymentModalInstance.show();
+}

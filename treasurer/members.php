@@ -118,7 +118,7 @@ $annual_target = $settings['annual_amount'];
                                                 👁️ View
                                             </button>
                                             <button class="btn btn-sm btn-primary" 
-                                                    onclick="recordPayment('<?php echo $member['member_id']; ?>', '<?php echo htmlspecialchars($member['full_name']); ?>')">
+                                                    onclick="recordPayment('<?php echo htmlspecialchars($member['member_id'], ENT_QUOTES, 'UTF-8'); ?>', '<?php echo htmlspecialchars($member['full_name'], ENT_QUOTES, 'UTF-8'); ?>')">
                                                 💰 Pay
                                             </button>
                                         </div>
@@ -155,44 +155,52 @@ function viewMemberDetails(memberId) {
         .then(data => {
             if (data.success) {
                 const member = data.member;
+                const escapeHtml = (str) => {
+                    if (!str && str !== '') return '';
+                    return String(str).replace(/[&<>'"]/g, tag =>
+                        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+                    );
+                };
+
                 let html = `
                     <div class="row">
                         <div class="col-md-4 text-center">
-                            ${member.passport_photo ? 
-                                `<img src="<?php echo APP_URL; ?>/uploads/photos/${member.passport_photo}" 
-                                      class="img-fluid rounded mb-3" style="max-width: 200px;">` : 
+                            ${member.passport_photo ?
+                                `<img src="<?php echo APP_URL; ?>/uploads/photos/${escapeHtml(member.passport_photo)}"
+                                      class="img-fluid rounded mb-3" style="max-width: 200px;">` :
                                 '<div class="bg-secondary text-white rounded p-5 mb-3">No Photo</div>'}
-                            <h5>${member.full_name}</h5>
-                            <p class="text-muted">${member.member_id}</p>
+                            <h5>${escapeHtml(member.full_name)}</h5>
+                            <p class="text-muted">${escapeHtml(member.member_id)}</p>
                         </div>
                         <div class="col-md-8">
                             <table class="table">
-                                <tr><td><strong>Email:</strong></td><td>${member.email}</td></tr>
-                                <tr><td><strong>Phone:</strong></td><td>${member.phone}</td></tr>
-                                <tr><td><strong>Date of Birth:</strong></td><td>${member.dob}</td></tr>
-                                <tr><td><strong>Gender:</strong></td><td>${member.gender}</td></tr>
-                                <tr><td><strong>Address:</strong></td><td>${member.address}</td></tr>
-                                <tr><td><strong>Occupation:</strong></td><td>${member.occupation || 'N/A'}</td></tr>
-                                <tr><td><strong>Emergency Contact:</strong></td><td>${member.emergency_contact_name} (${member.emergency_contact_relationship}) - ${member.emergency_contact_phone}</td></tr>
+                                <tr><td><strong>Email:</strong></td><td>${escapeHtml(member.email)}</td></tr>
+                                <tr><td><strong>Phone:</strong></td><td>${escapeHtml(member.phone)}</td></tr>
+                                <tr><td><strong>Date of Birth:</strong></td><td>${escapeHtml(member.dob)}</td></tr>
+                                <tr><td><strong>Gender:</strong></td><td>${escapeHtml(member.gender)}</td></tr>
+                                <tr><td><strong>Address:</strong></td><td>${escapeHtml(member.address)}</td></tr>
+                                <tr><td><strong>Occupation:</strong></td><td>${escapeHtml(member.occupation || 'N/A')}</td></tr>
+                                <tr><td><strong>Emergency Contact:</strong></td><td>${escapeHtml(member.emergency_contact_name)} (${escapeHtml(member.emergency_contact_relationship)}) - ${escapeHtml(member.emergency_contact_phone)}</td></tr>
                                 <tr><td><strong>Registered:</strong></td><td>${new Date(member.created_at).toLocaleDateString()}</td></tr>
                             </table>
                         </div>
                     </div>
                 `;
                 document.getElementById('memberDetailsContent').innerHTML = html;
-                new bootstrap.Modal(document.getElementById('memberDetailsModal')).show();
+
+                const modalEl = document.getElementById('memberDetailsModal');
+                document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
+                if (!window._memberDetailsModalInstance) {
+                    window._memberDetailsModalInstance = new bootstrap.Modal(modalEl);
+                }
+                window._memberDetailsModalInstance.show();
             }
         });
 }
 
 function recordPayment(memberId, memberName) {
-    // Open payment modal with pre-filled member
-    const paymentModal = new bootstrap.Modal(document.getElementById('paymentModal'));
-    document.getElementById('selectedMemberId').value = memberId;
-    document.getElementById('selectedMemberName').textContent = memberName;
-    document.getElementById('memberSearch').value = memberName;
-    document.getElementById('submitPayment').disabled = false;
-    paymentModal.show();
+    // Redirect to transactions page where the payment modal actually exists
+    window.location.href = `<?php echo APP_URL; ?>/treasurer/transactions.php?action=new&member_id=${memberId}&member_name=${encodeURIComponent(memberName)}`;
 }
 </script>
 

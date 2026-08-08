@@ -275,17 +275,7 @@ function selectMember(id, name) {
     document.getElementById('memberSearch').value = name;
 }
 
-let _paymentModalInstance = null;
-function openPaymentModal() {
-    const el = document.getElementById('paymentModal');
-    if (!el) return;
-    if (!_paymentModalInstance) {
-        _paymentModalInstance = new bootstrap.Modal(el, { backdrop: true, keyboard: true });
-    }
-    _paymentModalInstance.show();
-}
-
-// Auto-open payment modal if action=new is in URL (null-safe)
+// Auto-open payment modal if action=new is in URL (uses global openPaymentModal)
 if (new URLSearchParams(window.location.search).get('action') === 'new') {
     openPaymentModal();
 }
