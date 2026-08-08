@@ -55,30 +55,34 @@
 
     <!-- Modal failsafe: force-clean stuck backdrops / modal-open / overflow lock -->
     <script>
-        document.addEventListener('click', function(event) {
-            if (event.target.classList.contains('modal') || event.target.classList.contains('btn-close')) {
-                setTimeout(function() {
-                    if (!document.querySelector('.modal.show')) {
-                        document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
-                        document.body.classList.remove('modal-open');
-                        document.body.style.overflow = '';
-                        document.body.style.paddingRight = '';
-                    }
-                }, 300);
+    (function() {
+        function cleanupModalBackdrops() {
+            document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+        }
+
+        // Catch ALL hidden.bs.modal events via event delegation (covers dynamically created modals too)
+        document.addEventListener('hidden.bs.modal', function(e) {
+            if (!document.querySelector('.modal.show')) {
+                cleanupModalBackdrops();
             }
         });
 
-        window.addEventListener('DOMContentLoaded', function() {
-            var modals = document.querySelectorAll('.modal');
-            modals.forEach(function(modal) {
-                modal.addEventListener('hidden.bs.modal', function() {
-                    document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
-                    document.body.classList.remove('modal-open');
-                    document.body.style.overflow = '';
-                    document.body.style.paddingRight = '';
-                });
-            });
+        // Backdrop-click / ESC fallback: Bootstrap should fire hidden.bs.modal, but if it doesn't,
+        // catch the click on the backdrop itself and clean up after a short delay
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('modal-backdrop')) {
+                setTimeout(cleanupModalBackdrops, 50);
+            }
         });
+
+        // Final safety net on page load: clean up any stuck backdrops from a previous interrupted state
+        window.addEventListener('load', function() {
+            setTimeout(cleanupModalBackdrops, 100);
+        });
+    })();
     </script>
 
 </body>

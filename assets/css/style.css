@@ -1,7 +1,41 @@
 /* GYF Welfare Management System - Glassmorphism Styles */
 
-/* Google Fonts Import */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+/* Local Inter font faces — self-hosted to eliminate external font requests */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('../fonts/Inter-Regular.ttf') format('truetype');
+}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('../fonts/Inter-Medium.ttf') format('truetype');
+}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('../fonts/Inter-SemiBold.ttf') format('truetype');
+}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('../fonts/Inter-Bold.ttf') format('truetype');
+}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 800;
+    font-display: swap;
+    src: url('../fonts/Inter-ExtraBold.ttf') format('truetype');
+}
 
 /* CSS Variables */
 :root {
@@ -562,6 +596,14 @@ a:hover {
 }
 
 /* Modals */
+.modal-backdrop {
+    z-index: 1050 !important;
+}
+
+.modal {
+    z-index: 1055 !important;
+}
+
 .modal-content {
     background: var(--glass-bg-strong);
     backdrop-filter: var(--glass-blur);
@@ -848,11 +890,32 @@ a:hover {
     .modal-dialog {
         margin: 0.5rem;
     }
-    
-    /* Progress bars in calendar */
+}
+
+/* Ensure modal dialog clears the sticky navbar and stays centered */
+@media (min-width: 576px) {
+    .modal {
+        padding-top: 3rem;
+    }
+    .modal-dialog {
+        margin: 1.75rem auto;
+    }
+}
     .progress[style*="rotate(180deg)"] {
         height: 80px !important;
     }
+}
+
+/* Back link for login/register pages */
+.back-link {
+    color: var(--text-secondary);
+    border-color: var(--glass-border);
+    text-decoration: none;
+}
+.back-link:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.35);
 }
 
 /* Medium screen adjustments for stat cards & page layouts */
@@ -1207,7 +1270,7 @@ hr {
 /* Modal safety: only neutralize backdrop-filter on modal ancestors so a
    glass ancestor cannot trap the fixed-position modal/backdrop.
    Stacking and positioning are left to Bootstrap's own rules. */
-.modal, .modal-backdrop, .modal-dialog, .modal-content {
+.modal, .modal-dialog, .modal-content {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
 }

@@ -79,6 +79,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="container">
         <div class="row justify-content-center mt-5">
             <div class="col-md-5">
+                <div class="mb-3">
+                    <a href="<?php echo APP_URL; ?>/" class="btn btn-outline-light btn-sm back-link">
+                        ← Back
+                    </a>
+                </div>
                 <div class="card glass-strong">
                     <div class="card-body text-center">
                         <img src="<?php echo APP_URL; ?>/uploads/photos/logo.png" alt="GYF Welfare" class="app-logo-large mb-3">

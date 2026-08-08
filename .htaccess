@@ -12,12 +12,25 @@ RewriteRule ^(.*)$ $1.php [NC,L]
 
 # Security Headers
 <IfModule mod_headers.c>
+    Header always unset X-Powered-By
     Header set X-Content-Type-Options "nosniff"
     Header set X-Frame-Options "DENY"
     Header set X-XSS-Protection "1; mode=block"
     Header set Referrer-Policy "strict-origin-when-cross-origin"
     Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
 </IfModule>
+
+# Hide Apache version (must also set ServerTokens Prod in httpd.conf)
+# ServerTokens Prod
+# ServerSignature Off
+#
+# Note: The "Server: Apache/2.4.58" header cannot be removed from .htaccess.
+# To fix the ZAP "Server Leaks Version Information" finding, edit your
+# C:\xampp\apache\conf\httpd.conf and set:
+#   ServerTokens Prod
+#   ServerSignature Off
+# Then restart Apache.
 
 # Prevent directory listing
 Options -Indexes
@@ -64,6 +77,9 @@ AddDefaultCharset UTF-8
     <FilesMatch "\.(php|html)$">
         Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
         Header set Pragma "no-cache"
+    </FilesMatch>
+    <FilesMatch "\.html$">
+        Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none';"
     </FilesMatch>
 </IfModule>
 

@@ -12,8 +12,6 @@ self.addEventListener('activate', function (event) {
             await Promise.all(keys.map(function (k) { return caches.delete(k); }));
             // Remove this worker itself
             await self.registration.unregister();
-            // Take control of all open pages so they reload fresh
-            await self.clients.claim();
         })()
     );
 });

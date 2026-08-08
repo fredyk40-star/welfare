@@ -1,24 +1,19 @@
 <?php
 // Content Security Policy
 $csp = "default-src 'self'; " .
-       "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; " .
-       "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; " .
-       "font-src 'self' https://fonts.gstatic.com data:; " .
-       "img-src 'self' data: https:; " .
+       "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " .
+       "style-src 'self' 'unsafe-inline'; " .
+       "font-src 'self' data:; " .
+       "img-src 'self' data:; " .
        "connect-src 'self'; " .
+       "form-action 'self'; " .
        "frame-ancestors 'none';";
 header("Content-Security-Policy: " . $csp);
 
-// Session Cookie Security
-if (session_status() === PHP_SESSION_NONE) {
-    session_set_cookie_params([
-        'lifetime' => 3600,
-        'path' => '/',
-        'domain' => '',
-        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
-        'httponly' => true,
-        'samesite' => 'Strict'
-    ]);
+header_remove('X-Powered-By');
+
+if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
+    header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
 }
 
 // CSRF Token Generation

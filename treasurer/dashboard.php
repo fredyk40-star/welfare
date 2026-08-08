@@ -94,38 +94,8 @@ $recent_transactions = $db->query($recent_query)->fetchAll();
     </div>
 </div>
 
-<!-- Quick Actions -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Quick Actions</h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-4 mb-2">
-                        <button class="btn btn-primary w-100" type="button" onclick="openPaymentModal()">
-                            ➕ Record Payment
-                        </button>
-                    </div>
-                    <div class="col-md-4 mb-2">
-                        <a href="members.php" class="btn btn-warning w-100">
-                            👥 View Members
-                        </a>
-                    </div>
-                    <div class="col-md-4 mb-2">
-                        <a href="settings.php" class="btn btn-info w-100 text-white">
-                            ⚙️ Settings
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Recent Transactions -->
-<div class="row">
+<div class="row mb-4">
     <div class="col-12">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -168,6 +138,36 @@ $recent_transactions = $db->query($recent_query)->fetchAll();
                             <?php endforeach; ?>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions (moved below Recent Transactions so nothing blocks the navbar / search) -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-2">
+                        <button class="btn btn-primary w-100" type="button" onclick="openPaymentModal()">
+                            ➕ Record Payment
+                        </button>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <a href="members.php" class="btn btn-warning w-100">
+                            👥 View Members
+                        </a>
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <a href="settings.php" class="btn btn-info w-100 text-white">
+                            ⚙️ Settings
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -247,6 +247,19 @@ $recent_transactions = $db->query($recent_query)->fetchAll();
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
 
 <script>
+// Global function to open the payment modal safely and prevent stuck backdrops
+function openPaymentModal() {
+    const modalEl = document.getElementById('paymentModal');
+    if (!modalEl) return;
+    
+    // Force-remove any lingering backdrops from previous interrupted actions
+    document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+    
+    // Initialize and display the Bootstrap modal
+    const paymentModal = new bootstrap.Modal(modalEl);
+    paymentModal.show();
+}
+
 // Member search for the payment modal (shared with transactions page)
 function searchMembers() {
     const term = document.getElementById('memberSearch').value;
@@ -257,10 +270,14 @@ function searchMembers() {
             let html = '';
             if (data.success && data.members.length) {
                 data.members.forEach(m => {
-                    html += `<div class="card mb-2 member-card" style="cursor:pointer" onclick="selectMember('${m.member_id}','${m.full_name}')">
+                    const safeName = m.full_name.replace(/[&<>'"]/g, tag => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[tag] || tag));
+                    const safeId = String(m.member_id).replace(/[&<>'"]/g, tag => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[tag] || tag));
+                    const safePhone = String(m.phone).replace(/[&<>'"]/g, tag => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[tag] || tag));
+                    const safePhoto = m.passport_photo ? String(m.passport_photo).replace(/[&<>'"]/g, tag => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[tag] || tag)) : '';
+                    html += `<div class="card mb-2 member-card" style="cursor:pointer" onclick="selectMember('${safeId}','${safeName}')">
                         <div class="card-body"><div class="d-flex align-items-center">
-                        ${m.passport_photo ? `<img src='<?php echo APP_URL; ?>/uploads/photos/${m.passport_photo}' class='member-photo me-2'>` : ''}
-                        <div><strong>${m.full_name}</strong><br><small>${m.member_id} | ${m.phone}</small></div></div></div></div>`;
+                        ${safePhoto ? `<img src='<?php echo APP_URL; ?>/uploads/photos/${safePhoto}' class='member-photo me-2'>` : ''}
+                        <div><strong>${safeName}</strong><br><small>${safeId} | ${safePhone}</small></div></div></div></div>`;
                 });
             } else {
                 html = '<div class="alert alert-warning">No members found</div>';
@@ -268,6 +285,7 @@ function searchMembers() {
             document.getElementById('searchResults').innerHTML = html;
         });
 }
+
 function selectMember(id, name) {
     document.getElementById('selectedMemberId').value = id;
     document.getElementById('selectedMemberName').textContent = name;
@@ -275,8 +293,21 @@ function selectMember(id, name) {
     document.getElementById('memberSearch').value = name;
 }
 
-// Auto-open payment modal if action=new is in URL (uses global openPaymentModal)
+// Auto-open payment modal if action=new is in URL
 if (new URLSearchParams(window.location.search).get('action') === 'new') {
     openPaymentModal();
 }
+
+// Global failsafe listener to clean up body scroll locks if a modal closes abnormally
+document.addEventListener('DOMContentLoaded', function () {
+    const paymentModalEl = document.getElementById('paymentModal');
+    if (paymentModalEl) {
+        paymentModalEl.addEventListener('hidden.bs.modal', function () {
+            document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+        });
+    }
+});
 </script>

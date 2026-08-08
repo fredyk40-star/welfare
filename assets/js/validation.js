@@ -42,7 +42,7 @@ function validatePasswordStrength(field) {
     const hasLowercase = /[a-z]/.test(password);
     const hasNumber = /[0-9]/.test(password);
     const hasSpecial = /[!@#$%^&*()\-_=+{};:,<.>]/.test(password);
-    const isValidLength = password.length >= 8 && password.length <= 12;
+    const isValidLength = password.length >= 8 && password.length <= 255;
     
     const isValid = hasUppercase && hasLowercase && hasNumber && hasSpecial && isValidLength;
     
@@ -55,7 +55,7 @@ function validatePasswordStrength(field) {
         
         if (feedback && feedback.classList.contains('text-muted')) {
             let message = 'Password must contain: ';
-            if (!isValidLength) message += '8-12 characters, ';
+            if (!isValidLength) message += '8-255 characters, ';
             if (!hasUppercase) message += 'uppercase letter, ';
             if (!hasLowercase) message += 'lowercase letter, ';
             if (!hasNumber) message += 'number, ';
@@ -118,7 +118,7 @@ function formatPhoneNumber(field) {
             value = '+' + value;
         }
         
-        // Format: +233 XX XXX XXXX
+        // Format: local Ghana numbers to +233 format
         if (value.length > 3) value = value.substring(0, 3) + ' ' + value.substring(3);
         if (value.length > 6) value = value.substring(0, 6) + ' ' + value.substring(6);
         if (value.length > 10) value = value.substring(0, 10) + ' ' + value.substring(10);

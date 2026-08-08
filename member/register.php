@@ -109,6 +109,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+
+$full_name = $full_name ?? '';
+$dob = $dob ?? '';
+$gender = $gender ?? '';
+$email = $email ?? '';
+$country_code = $country_code ?? '+233';
+$phone = $phone ?? '';
+$address = $address ?? '';
+$occupation = $occupation ?? '';
+$emergency_name = $emergency_name ?? '';
+$emergency_relationship = $emergency_relationship ?? '';
+$emergency_phone = $emergency_phone ?? '';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -123,6 +135,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="container mt-5">
         <div class="row justify-content-center">
             <div class="col-md-8">
+                <div class="mb-2">
+                    <a href="<?php echo APP_URL; ?>/" class="btn btn-outline-light btn-sm back-link">
+                        ← Back
+                    </a>
+                </div>
                 <div class="card">
                     <div class="card-header text-center">
                         <h3>Member Registration</h3>
@@ -145,11 +162,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
                                         <label for="full_name" class="form-label">Full Name *</label>
-                                        <input type="text" class="form-control" id="full_name" name="full_name" required>
+                                        <input type="text" class="form-control" id="full_name" name="full_name" value="<?php echo htmlspecialchars($full_name, ENT_QUOTES, 'UTF-8'); ?>" required>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label for="dob" class="form-label">Date of Birth *</label>
-                                        <input type="date" class="form-control" id="dob" name="dob" required>
+                                        <input type="date" class="form-control" id="dob" name="dob" value="<?php echo htmlspecialchars($dob, ENT_QUOTES, 'UTF-8'); ?>" required>
                                     </div>
                                 </div>
                                 
@@ -157,15 +174,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <div class="col-md-6 mb-3">
                                         <label for="gender" class="form-label">Gender *</label>
                                         <select class="form-control" id="gender" name="gender" required>
-                                            <option value="">Select Gender</option>
-                                            <option value="Male">Male</option>
-                                            <option value="Female">Female</option>
-                                            <option value="Other">Other</option>
+                                            <option value="" <?php echo $gender === '' ? 'selected' : ''; ?>>Select Gender</option>
+                                            <option value="Male" <?php echo $gender === 'Male' ? 'selected' : ''; ?>>Male</option>
+                                            <option value="Female" <?php echo $gender === 'Female' ? 'selected' : ''; ?>>Female</option>
+                                            <option value="Other" <?php echo $gender === 'Other' ? 'selected' : ''; ?>>Other</option>
                                         </select>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label for="email" class="form-label">Email Address *</label>
-                                        <input type="email" class="form-control" id="email" name="email" required>
+                                        <input type="email" class="form-control" id="email" name="email" value="<?php echo htmlspecialchars($email, ENT_QUOTES, 'UTF-8'); ?>" required>
                                     </div>
                                 </div>
                                 
@@ -173,41 +190,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <div class="col-md-3 mb-3">
                                         <label for="country_code" class="form-label">Country Code *</label>
                                         <select class="form-control" id="country_code" name="country_code" required>
-                                            <option value="+233">Ghana (+233)</option>
-                                            <option value="+1">USA (+1)</option>
-                                            <option value="+44">UK (+44)</option>
-                                            <option value="+27">South Africa (+27)</option>
-                                            <option value="+234">Nigeria (+234)</option>
-                                            <option value="+254">Kenya (+254)</option>
-                                            <option value="+255">Tanzania (+255)</option>
-                                            <option value="+256">Uganda (+256)</option>
-                                            <option value="+265">Malawi (+265)</option>
-                                            <option value="+260">Zambia (+260)</option>
-                                            <option value="+263">Zimbabwe (+263)</option>
-                                            <option value="+258">Mozambique (+258)</option>
-                                            <option value="+257">Burundi (+257)</option>
-                                            <option value="+250">Rwanda (+250)</option>
-                                            <option value="+221">Senegal (+221)</option>
-                                            <option value="+223">Mali (+223)</option>
-                                            <option value="+226">Burkina Faso (+226)</option>
-                                            <option value="+229">Benin (+229)</option>
-                                            <option value="+224">Guinea (+224)</option>
-                                            <option value="+225">Ivory Coast (+225)</option>
-                                            <option value="+220">Gambia (+220)</option>
-                                            <option value="+232">Sierra Leone (+232)</option>
-                                            <option value="+231">Liberia (+231)</option>
+                                            <option value="+233" <?php echo $country_code === '+233' ? 'selected' : ''; ?>>Ghana (+233)</option>
+                                            <option value="+1" <?php echo $country_code === '+1' ? 'selected' : ''; ?>>USA (+1)</option>
+                                            <option value="+44" <?php echo $country_code === '+44' ? 'selected' : ''; ?>>UK (+44)</option>
+                                            <option value="+27" <?php echo $country_code === '+27' ? 'selected' : ''; ?>>South Africa (+27)</option>
+                                            <option value="+234" <?php echo $country_code === '+234' ? 'selected' : ''; ?>>Nigeria (+234)</option>
+                                            <option value="+254" <?php echo $country_code === '+254' ? 'selected' : ''; ?>>Kenya (+254)</option>
+                                            <option value="+255" <?php echo $country_code === '+255' ? 'selected' : ''; ?>>Tanzania (+255)</option>
+                                            <option value="+256" <?php echo $country_code === '+256' ? 'selected' : ''; ?>>Uganda (+256)</option>
+                                            <option value="+265" <?php echo $country_code === '+265' ? 'selected' : ''; ?>>Malawi (+265)</option>
+                                            <option value="+260" <?php echo $country_code === '+260' ? 'selected' : ''; ?>>Zambia (+260)</option>
+                                            <option value="+263" <?php echo $country_code === '+263' ? 'selected' : ''; ?>>Zimbabwe (+263)</option>
+                                            <option value="+258" <?php echo $country_code === '+258' ? 'selected' : ''; ?>>Mozambique (+258)</option>
+                                            <option value="+257" <?php echo $country_code === '+257' ? 'selected' : ''; ?>>Burundi (+257)</option>
+                                            <option value="+250" <?php echo $country_code === '+250' ? 'selected' : ''; ?>>Rwanda (+250)</option>
+                                            <option value="+221" <?php echo $country_code === '+221' ? 'selected' : ''; ?>>Senegal (+221)</option>
+                                            <option value="+223" <?php echo $country_code === '+223' ? 'selected' : ''; ?>>Mali (+223)</option>
+                                            <option value="+226" <?php echo $country_code === '+226' ? 'selected' : ''; ?>>Burkina Faso (+226)</option>
+                                            <option value="+229" <?php echo $country_code === '+229' ? 'selected' : ''; ?>>Benin (+229)</option>
+                                            <option value="+224" <?php echo $country_code === '+224' ? 'selected' : ''; ?>>Guinea (+224)</option>
+                                            <option value="+225" <?php echo $country_code === '+225' ? 'selected' : ''; ?>>Ivory Coast (+225)</option>
+                                            <option value="+220" <?php echo $country_code === '+220' ? 'selected' : ''; ?>>Gambia (+220)</option>
+                                            <option value="+232" <?php echo $country_code === '+232' ? 'selected' : ''; ?>>Sierra Leone (+232)</option>
+                                            <option value="+231" <?php echo $country_code === '+231' ? 'selected' : ''; ?>>Liberia (+231)</option>
                                         </select>
                                     </div>
                                     <div class="col-md-9 mb-3">
                                         <label for="phone" class="form-label">Phone Number *</label>
                                         <input type="tel" class="form-control" id="phone" name="phone" 
-                                               placeholder="XX XXX XXXX" required>
+                                               value="<?php echo htmlspecialchars($phone, ENT_QUOTES, 'UTF-8'); ?>" placeholder="XX XXX XXXX" required>
                                     </div>
                                 </div>
                                 
                                 <div class="mb-3">
                                     <label for="address" class="form-label">Residential Address *</label>
-                                    <textarea class="form-control" id="address" name="address" rows="2" required></textarea>
+                                    <textarea class="form-control" id="address" name="address" rows="2" required><?php echo htmlspecialchars($address, ENT_QUOTES, 'UTF-8'); ?></textarea>
                                 </div>
                                 
                                 <h5 class="mb-3">Emergency Contact</h5>
@@ -215,17 +232,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <div class="col-md-4 mb-3">
                                         <label for="emergency_contact_name" class="form-label">Contact Name *</label>
                                         <input type="text" class="form-control" id="emergency_contact_name" 
-                                               name="emergency_contact_name" required>
+                                               name="emergency_contact_name" value="<?php echo htmlspecialchars($emergency_name, ENT_QUOTES, 'UTF-8'); ?>" required>
                                     </div>
                                     <div class="col-md-4 mb-3">
                                         <label for="emergency_contact_relationship" class="form-label">Relationship *</label>
                                         <input type="text" class="form-control" id="emergency_contact_relationship" 
-                                               name="emergency_contact_relationship" required>
+                                               name="emergency_contact_relationship" value="<?php echo htmlspecialchars($emergency_relationship, ENT_QUOTES, 'UTF-8'); ?>" required>
                                     </div>
                                     <div class="col-md-4 mb-3">
                                         <label for="emergency_contact_phone" class="form-label">Phone *</label>
                                         <input type="tel" class="form-control" id="emergency_contact_phone" 
-                                               name="emergency_contact_phone" required>
+                                               name="emergency_contact_phone" value="<?php echo htmlspecialchars($emergency_phone, ENT_QUOTES, 'UTF-8'); ?>" required>
                                     </div>
                                 </div>
                                 
