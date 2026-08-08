@@ -245,6 +245,8 @@ if (isset($_GET['reset']) && $_GET['reset'] == 'success') {
     </style>
 </head>
 <body>
+    <!-- Background slideshow (self-contained for this standalone login page) -->
+    <div class="bg-slideshow" id="bgSlideshow"></div>
     <div class="container login-container">
         <div class="row justify-content-center align-items-center min-vh-100">
             <div class="col-md-5 col-lg-4">
@@ -358,33 +360,6 @@ if (isset($_GET['reset']) && $_GET['reset'] == 'success') {
                         </div>
                     </div>
                 </div>
-                
-                <!-- Features -->
-                <div class="card mt-3 glass-strong">
-                    <div class="card-body">
-                        <h6 class="text-white-50 mb-3">Treasurer Capabilities:</h6>
-                        <ul class="features-list">
-                            <li>Record member welfare payments</li>
-                            <li>View real-time financial analytics</li>
-                            <li>Manage member accounts & profiles</li>
-                            <li>Configure welfare contribution targets</li>
-                            <li>Generate financial reports & exports</li>
-                        </ul>
-                    </div>
-                </div>
-                
-                <!-- Security Footer -->
-                <div class="text-center mt-4 mb-4">
-                    <small class="text-muted">
-                        🔒 Secured with 256-bit encryption | 
-                        <a href="#" class="text-muted">Privacy Policy</a> | 
-                        <a href="#" class="text-muted">Terms of Service</a>
-                    </small>
-                    <br>
-                    <small class="text-muted">
-                        © <?php echo date('Y'); ?> GYF Ministry & Prayer Camp. All rights reserved.
-                    </small>
-                </div>
             </div>
         </div>
     </div>
@@ -467,6 +442,35 @@ if (isset($_GET['reset']) && $_GET['reset'] == 'success') {
                 }
             }
         });
+    </script>
+
+    <!-- Background slideshow: cycle uploads images behind the dark overlay -->
+    <script>
+    (function () {
+        var container = document.getElementById('bgSlideshow');
+        if (!container) return;
+        var base = '';
+        var images = [];
+        for (var n = 1; n <= 24; n++) {
+            images.push(base + 'uploads/' + n + '.jpg');
+        }
+        images.push(base + 'uploads/glassmorphism-background.jpg');
+        var slides = [];
+        images.forEach(function (src, idx) {
+            var div = document.createElement('div');
+            div.className = 'slide' + (idx === 0 ? ' active' : '');
+            div.style.backgroundImage = 'url(' + src + ')';
+            container.appendChild(div);
+            slides.push(div);
+        });
+        var current = 0;
+        setInterval(function () {
+            if (slides.length < 2) return;
+            slides[current].classList.remove('active');
+            current = (current + 1) % slides.length;
+            slides[current].classList.add('active');
+        }, 5000);
+    })();
     </script>
 </body>
 </html>

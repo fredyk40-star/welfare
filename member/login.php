@@ -76,6 +76,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/css/style.css">
 </head>
 <body>
+    <!-- Background slideshow (self-contained for this standalone login page) -->
+    <div class="bg-slideshow" id="bgSlideshow"></div>
     <div class="container">
         <div class="row justify-content-center mt-5">
             <div class="col-md-5">
@@ -132,6 +134,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     <script src="<?php echo APP_URL; ?>/assets/bootstrap/js/bootstrap.bundle.min.js"></script>
     <script src="<?php echo APP_URL; ?>/assets/js/validation.js"></script>
+    <script>
+    (function () {
+        var container = document.getElementById('bgSlideshow');
+        if (!container) return;
+        var base = '';
+        var images = [];
+        for (var n = 1; n <= 24; n++) {
+            images.push(base + 'uploads/' + n + '.jpg');
+        }
+        images.push(base + 'uploads/glassmorphism-background.jpg');
+        var slides = [];
+        images.forEach(function (src, idx) {
+            var div = document.createElement('div');
+            div.className = 'slide' + (idx === 0 ? ' active' : '');
+            div.style.backgroundImage = 'url(' + src + ')';
+            container.appendChild(div);
+            slides.push(div);
+        });
+        var current = 0;
+        setInterval(function () {
+            if (slides.length < 2) return;
+            slides[current].classList.remove('active');
+            current = (current + 1) % slides.length;
+            slides[current].classList.add('active');
+        }, 5000);
+    })();
+    </script>
 </body>
 </html>
 
