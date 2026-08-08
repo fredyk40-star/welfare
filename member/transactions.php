@@ -398,17 +398,17 @@ if ($monthly_target <= 0) $monthly_target = 1;
                                         <td>
                                             <div class="btn-group btn-group-sm">
                                                 <button class="btn btn-info" 
-                                                        onclick="viewReceipt('<?php echo $transaction['receipt_no']; ?>')"
+                                                        onclick="viewReceipt('<?php echo htmlspecialchars($transaction['receipt_no'], ENT_QUOTES, 'UTF-8'); ?>')"
                                                         title="View Receipt">
                                                     👁️
                                                 </button>
                                                 <button class="btn btn-success"
-                                                        onclick="printReceipt('<?php echo $transaction['receipt_no']; ?>')"
+                                                        onclick="printReceipt('<?php echo htmlspecialchars($transaction['receipt_no'], ENT_QUOTES, 'UTF-8'); ?>')"
                                                         title="Print Receipt">
                                                     🖨️
                                                 </button>
                                                 <button class="btn btn-primary"
-                                                        onclick="downloadReceipt('<?php echo $transaction['receipt_no']; ?>')"
+                                                        onclick="downloadReceipt('<?php echo htmlspecialchars($transaction['receipt_no'], ENT_QUOTES, 'UTF-8'); ?>')"
                                                         title="Download Receipt">
                                                     📥
                                                 </button>

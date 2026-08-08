@@ -309,8 +309,8 @@ $recent_logs = $logs_stmt->fetchAll();
                     <div class="mb-3">
                         <label for="new_password" class="form-label">New Password</label>
                         <input type="password" class="form-control" id="new_password" name="new_password" 
-                               placeholder="8-12 characters, include uppercase, lowercase, number, and special character" required>
-                        <small class="text-muted">Password must be 8-12 characters with uppercase, lowercase, number, and special character</small>
+                               placeholder="8-255 characters, include uppercase, lowercase, number, and special character" required>
+                        <small class="text-muted">Password must be 8-255 characters with uppercase, lowercase, number, and special character</small>
                     </div>
                     
                     <div class="mb-3">

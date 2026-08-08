@@ -114,7 +114,7 @@ $annual_target = $settings['annual_amount'];
                                     <td>
                                         <div class="btn-group">
                                             <button class="btn btn-sm btn-info" 
-                                                    onclick="viewMemberDetails('<?php echo $member['member_id']; ?>')">
+                                                    onclick="viewMemberDetails('<?php echo htmlspecialchars($member['member_id'], ENT_QUOTES, 'UTF-8'); ?>')">
                                                 👁️ View
                                             </button>
                                             <button class="btn btn-sm btn-primary" 

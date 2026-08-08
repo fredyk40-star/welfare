@@ -404,7 +404,7 @@ $transactions = $transactions_stmt->fetchAll();
                                     </td>
                                     <td><?php echo date('M d, Y', strtotime($transaction['transaction_date'])); ?></td>
                                     <td>
-                                        <button class="btn btn-sm btn-info" onclick="viewReceipt(<?php echo $transaction['id']; ?>)">
+                                        <button class="btn btn-sm btn-info" onclick="viewReceipt(<?php echo (int)$transaction['id']; ?>)">
                                             👁️ View
                                         </button>
                                     </td>
@@ -425,24 +425,35 @@ function searchMembers() {
         alert('Please enter at least 2 characters to search');
         return;
     }
-    
+
+    const escapeHtml = (str) => {
+        if (!str && str !== '') return '';
+        return String(str).replace(/[&<>'"]/g, tag =>
+            ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+        );
+    };
+
     fetch(`<?php echo APP_URL; ?>/api/members.php?action=search&term=${encodeURIComponent(searchTerm)}`)
         .then(response => response.json())
         .then(data => {
             let html = '';
             if (data.success && data.members.length > 0) {
                 data.members.forEach(member => {
+                    const safeName = escapeHtml(member.full_name);
+                    const safeId = escapeHtml(member.member_id);
+                    const safePhone = escapeHtml(member.phone);
+                    const safePhoto = escapeHtml(member.passport_photo);
                     html += `
                         <div class="card mb-2 member-card" style="cursor: pointer;" 
-                             onclick="selectMember('${member.member_id}', '${member.full_name}')">
+                             onclick="selectMember('${safeId}', '${safeName}')">
                             <div class="card-body">
                                 <div class="d-flex align-items-center">
-                                    ${member.passport_photo ? 
-                                        `<img src="<?php echo APP_URL; ?>/uploads/photos/${member.passport_photo}" 
+                                    ${safePhoto ? 
+                                        `<img src="<?php echo APP_URL; ?>/uploads/photos/${safePhoto}" 
                                               class="member-photo me-3">` : ''}
                                     <div>
-                                        <strong>${member.full_name}</strong><br>
-                                        <small>${member.member_id} | ${member.phone}</small>
+                                        <strong>${safeName}</strong><br>
+                                        <small>${safeId} | ${safePhone}</small>
                                     </div>
                                 </div>
                             </div>
