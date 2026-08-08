@@ -18,7 +18,7 @@
     <link rel="apple-touch-icon" href="assets/icons/icon-192x192.png">
 </head>
 <body>
-    <!-- Background slideshow (images injected by script below) -->
+    <!-- Background slideshow -->
     <div class="bg-slideshow" id="bgSlideshow"></div>
     <div class="container">
         <div class="row justify-content-center align-items-center min-vh-100">
@@ -94,38 +94,26 @@
         }
     </script>
 
+
+    <!-- Background slideshow for the static landing page -->
     <script>
-    // Background slideshow: cycle through uploads images with a dark overlay
     (function () {
         var container = document.getElementById('bgSlideshow');
         if (!container) return;
-
-        // Resolve base path so it works from root or a sub-directory
         var base = '';
-        var scripts = document.querySelectorAll('script[src]');
-        for (var i = 0; i < scripts.length; i++) {
-            var s = scripts[i].getAttribute('src') || '';
-            if (s.indexOf('assets/js/main.js') !== -1) {
-                base = s.substring(0, s.indexOf('assets/js/main.js'));
-                break;
-            }
-        }
-
         var images = [];
         for (var n = 1; n <= 24; n++) {
             images.push(base + 'uploads/' + n + '.jpg');
         }
         images.push(base + 'uploads/glassmorphism-background.jpg');
-
         var slides = [];
         images.forEach(function (src, idx) {
             var div = document.createElement('div');
             div.className = 'slide' + (idx === 0 ? ' active' : '');
-            div.style.backgroundImage = "url('" + src + "')";
+            div.style.backgroundImage = 'url(' + src + ')';
             container.appendChild(div);
             slides.push(div);
         });
-
         var current = 0;
         setInterval(function () {
             if (slides.length < 2) return;
@@ -135,5 +123,4 @@
         }, 5000);
     })();
     </script>
-</body>
 </html>

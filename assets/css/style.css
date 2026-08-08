@@ -930,7 +930,6 @@ a:hover {
     .progress[style*="rotate(180deg)"] {
         height: 80px !important;
     }
-}
 
 /* Back link for login/register pages */
 .back-link {

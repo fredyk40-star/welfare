@@ -1,4 +1,4 @@
-    </div> <!-- Close container from header -->
+﻿    </div> <!-- Close container from header -->
     
     <!-- Footer -->
     <footer class="mt-5 py-4">
@@ -53,7 +53,39 @@
         updateOnlineStatus();
     </script>
 
-    <!-- Modal failsafe: force-clean stuck backdrops / modal-open / overflow lock -->
+    <!-- Global background slideshow: cycle uploads images behind the dark overlay -->
+    <script>
+    (function () {
+        var container = document.getElementById('bgSlideshow');
+        if (!container) return;
+
+        var base = '<?php echo APP_URL; ?>/';
+
+        var images = [];
+        for (var n = 1; n <= 24; n++) {
+            images.push(base + 'uploads/' + n + '.jpg');
+        }
+        images.push(base + 'uploads/glassmorphism-background.jpg');
+
+        var slides = [];
+        images.forEach(function (src, idx) {
+            var div = document.createElement('div');
+            div.className = 'slide' + (idx === 0 ? ' active' : '');
+            div.style.backgroundImage = 'url(' + src + ')';
+            container.appendChild(div);
+            slides.push(div);
+        });
+
+        var current = 0;
+        setInterval(function () {
+            if (slides.length < 2) return;
+            slides[current].classList.remove('active');
+            current = (current + 1) % slides.length;
+            slides[current].classList.add('active');
+        }, 5000);
+    })();
+    </script>
+        <!-- Modal failsafe: force-clean stuck backdrops / modal-open / overflow lock -->
     <script>
     (function() {
         function cleanupModalBackdrops() {

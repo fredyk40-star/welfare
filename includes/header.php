@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/security.php';
 
@@ -40,6 +40,8 @@ if (!checkOnlineStatus()) {
     <link rel="apple-touch-icon" href="<?php echo APP_URL; ?>/assets/icons/icon-192x192.png">
 </head>
 <body>
+    <!-- Background slideshow (global, initialized in footer.php) -->
+    <div class="bg-slideshow" id="bgSlideshow"></div>
     <!-- Remove any previously registered service worker + purge its caches (offline cache fully disabled) -->
     <script>
         if ('serviceWorker' in navigator) {
