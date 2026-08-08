@@ -445,7 +445,7 @@ function searchMembers() {
                     const safePhoto = escapeHtml(member.passport_photo);
                     html += `
                         <div class="card mb-2 member-card" style="cursor: pointer;" 
-                             onclick="selectMember('${safeId}', '${safeName}')">
+                             data-member-id="${safeId}" data-member-name="${safeName}">
                             <div class="card-body">
                                 <div class="d-flex align-items-center">
                                     ${safePhoto ? 
@@ -519,6 +519,13 @@ function viewReceipt(transactionId) {
         trySelect();
     }
 })();
+
+// Event delegation for member result cards (avoids inline-onclick quoting bugs)
+document.addEventListener('click', function (e) {
+    var card = e.target.closest ? e.target.closest('.member-card[data-member-id]') : null;
+    if (!card) return;
+    selectMember(card.getAttribute('data-member-id'), card.getAttribute('data-member-name'));
+});
 </script>
 
 <style>

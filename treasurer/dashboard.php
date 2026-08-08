@@ -274,7 +274,7 @@ function searchMembers() {
                     const safeId = String(m.member_id).replace(/[&<>'"]/g, tag => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[tag] || tag));
                     const safePhone = String(m.phone).replace(/[&<>'"]/g, tag => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[tag] || tag));
                     const safePhoto = m.passport_photo ? String(m.passport_photo).replace(/[&<>'"]/g, tag => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[tag] || tag)) : '';
-                    html += `<div class="card mb-2 member-card" style="cursor:pointer" onclick="selectMember('${safeId}','${safeName}')">
+                    html += `<div class="card mb-2 member-card" style="cursor:pointer" data-member-id="${safeId}" data-member-name="${safeName}">
                         <div class="card-body"><div class="d-flex align-items-center">
                         ${safePhoto ? `<img src='<?php echo APP_URL; ?>/uploads/photos/${safePhoto}' class='member-photo me-2'>` : ''}
                         <div><strong>${safeName}</strong><br><small>${safeId} | ${safePhone}</small></div></div></div></div>`;
@@ -297,6 +297,12 @@ function selectMember(id, name) {
     if (resultsEl) resultsEl.innerHTML = '';
     if (searchEl) searchEl.value = name;
 }
+
+document.addEventListener('click', function (e) {
+    const card = e.target.closest ? e.target.closest('.member-card[data-member-id]') : null;
+    if (!card) return;
+    selectMember(card.getAttribute('data-member-id'), card.getAttribute('data-member-name'));
+});
 
 // Auto-open payment modal if action=new is in URL
 if (new URLSearchParams(window.location.search).get('action') === 'new') {
