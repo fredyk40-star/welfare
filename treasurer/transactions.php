@@ -310,7 +310,7 @@ $transactions = $transactions_stmt->fetchAll();
                     </div>
                     
                     <div class="alert alert-info">
-                        <strong>Selected Member:</strong> <span id="selectedMemberName">None</span>
+                        <strong>Selected Member:</strong> <span class="selected-dot" id="selectedDot"></span><span id="selectedMemberName">None</span>
                     </div>
                     
                     <button type="submit" class="btn btn-primary w-100" id="submitPayment" disabled>
@@ -446,6 +446,7 @@ function searchMembers() {
                     html += `
                         <div class="card mb-2 member-card" style="cursor: pointer;" 
                              data-member-id="${safeId}" data-member-name="${safeName}">
+                            <span class="selected-dot"></span>
                             <div class="card-body">
                                 <div class="d-flex align-items-center">
                                     ${safePhoto ? 
@@ -464,6 +465,19 @@ function searchMembers() {
                 html = '<div class="alert alert-warning">No members found</div>';
             }
             document.getElementById('searchResults').innerHTML = html;
+            // Re-mark an already-selected member after a fresh search render
+            const curId = document.getElementById('selectedMemberId').value;
+            if (curId) {
+                const cards = document.querySelectorAll('#searchResults .member-card');
+                cards.forEach(c => {
+                    if (c.getAttribute('data-member-id') === curId) {
+                        c.classList.add('selected');
+                    } else {
+                        c.style.pointerEvents = 'none';
+                        c.style.opacity = '0.5';
+                    }
+                });
+            }
         });
 }
 
@@ -473,13 +487,71 @@ function selectMember(memberId, memberName) {
     const resultsEl = document.getElementById('searchResults');
     const searchEl = document.getElementById('memberSearch');
     const submitEl = document.getElementById('submitPayment');
+    const dotEl = document.getElementById('selectedDot');
     if (!idEl || !nameEl) return;
+
     idEl.value = memberId;
     nameEl.textContent = memberName;
-    if (resultsEl) resultsEl.innerHTML = '';
+    nameEl.classList.add('is-selected');
+    if (dotEl) dotEl.style.display = 'inline-block';
+
+    // Visual confirmation: green dot on the chosen card, dim the rest
+    if (resultsEl) {
+        const cards = resultsEl.querySelectorAll('.member-card');
+        cards.forEach(c => {
+            if (c.getAttribute('data-member-id') === memberId) {
+                c.classList.add('selected');
+                c.style.pointerEvents = 'none';
+                c.style.opacity = '1';
+            } else {
+                c.classList.remove('selected');
+                c.style.pointerEvents = 'none';
+                c.style.opacity = '0.5';
+            }
+        });
+    }
     if (searchEl) searchEl.value = memberName;
-    if (submitEl) submitEl.disabled = false;
+
+    // Member verified -> enable the record button
+    if (submitEl) {
+        submitEl.disabled = false;
+        validateForm();
+    }
 }
+
+// Enable submit only when member selected AND required fields filled
+function validateForm() {
+    const submitEl = document.getElementById('submitPayment');
+    if (!submitEl) return;
+    const memberId = document.getElementById('selectedMemberId').value;
+    const amount = document.getElementById('amount').value;
+    const method = document.getElementById('payment_method').value;
+    const month = document.getElementById('billing_month').value;
+    const year = document.getElementById('billing_year').value;
+    const ready = memberId && amount && method && month && year;
+    submitEl.disabled = !ready;
+}
+
+// Live validation as the treasurer fills the form
+['amount', 'payment_method', 'billing_month', 'billing_year'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', validateForm);
+});
+
+// Submit guard: ensure a member is actually selected before posting
+document.getElementById('paymentForm').addEventListener('submit', function (e) {
+    const memberId = document.getElementById('selectedMemberId').value;
+    if (!memberId) {
+        e.preventDefault();
+        alert('Please select a member first.');
+        return;
+    }
+    validateForm();
+    if (document.getElementById('submitPayment').disabled) {
+        e.preventDefault();
+        alert('Please fill in all required payment details.');
+    }
+});
 
 function viewReceipt(transactionId) {
     window.open(`<?php echo APP_URL; ?>/api/transactions.php?action=receipt&id=${transactionId}`, 
@@ -512,6 +584,11 @@ function viewReceipt(transactionId) {
                 var submitBtn = document.getElementById('submitPayment');
                 if (submitBtn) submitBtn.disabled = false;
                 document.getElementById('searchResults').innerHTML = '';
+                var dn = document.getElementById('selectedDot');
+                if (dn) dn.style.display = 'inline-block';
+                var nn = document.getElementById('selectedMemberName');
+                if (nn) nn.classList.add('is-selected');
+                validateForm();
                 return;
             }
             setTimeout(trySelect, 200);
@@ -536,6 +613,28 @@ document.addEventListener('click', function (e) {
 .member-card:hover {
     border-color: var(--dark-blue);
     background-color: var(--light-blue);
+}
+/* Selected member: green highlight + small green dot */
+.member-card.selected {
+    border-color: #28a745 !important;
+    background-color: rgba(40, 167, 69, 0.15) !important;
+    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.35);
+}
+.member-card.selected .selected-dot {
+    display: inline-block;
+}
+.selected-dot {
+    display: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #28a745;
+    box-shadow: 0 0 6px rgba(40, 167, 69, 0.8);
+    margin-right: 8px;
+    vertical-align: middle;
+}
+#selectedMemberName.is-selected {
+    color: #28a745;
 }
 </style>
 
