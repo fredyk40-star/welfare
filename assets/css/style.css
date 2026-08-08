@@ -218,14 +218,15 @@ a:hover {
     border-bottom: 1px solid var(--glass-border);
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
     border-radius: 0 !important;
-    padding: 1rem 0;
+    padding: 0.4rem 0;
+    margin-top: 0 !important;
     transition: all 0.3s ease;
 }
 
 .navbar-brand {
     font-weight: var(--fw-bold);
     color: var(--text-primary) !important;
-    font-size: 1.5rem;
+    font-size: 1.15rem;
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
@@ -235,6 +236,13 @@ a:hover {
 .navbar-brand:hover {
     color: var(--accent-cyan) !important;
     text-shadow: 0 0 20px var(--accent-glow);
+}
+
+/* Kill the dead space the global .container padding adds inside the navbar */
+.navbar .container,
+.navbar .container-fluid {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
 }
 
 .nav-link {
@@ -801,8 +809,8 @@ a:hover {
 .container {
     position: relative;
     z-index: 1;
-    padding-top: 2rem;
-    padding-bottom: 2rem;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
 }
 
 /* Responsive Design */

@@ -57,7 +57,7 @@ if (!checkOnlineStatus()) {
     </script>
     <!-- Navigation Bar -->
     <nav class="navbar navbar-expand-lg sticky-top">
-        <div class="container">
+        <div class="container-fluid px-3">
             <a class="navbar-brand" href="<?php echo APP_URL; ?>">
                 <img src="<?php echo APP_URL; ?>/uploads/photos/logo.png" alt="GYF Welfare" class="app-logo">
                 <span class="d-none d-sm-inline">GYF Welfare</span>
