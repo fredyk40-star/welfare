@@ -1,0 +1,502 @@
+<?php
+require_once __DIR__ . '/../includes/header.php';
+
+// Check if user is treasurer
+if (!isTreasurer()) {
+    redirectTo('/member/login.php');
+}
+
+$database = new Database();
+$db = $database->getConnection();
+
+$success = '';
+$error = '';
+$csrf_token = generateCsrfToken();
+
+// Handle new transaction submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'record_payment') {
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        $error = 'Invalid request. Please try again.';
+    } else {
+        $member_id = sanitizeInput($_POST['member_id']);
+        $amount = sanitizeInput($_POST['amount']);
+        $payment_method = sanitizeInput($_POST['payment_method']);
+        $billing_month = sanitizeInput($_POST['billing_month']);
+        $billing_year = sanitizeInput($_POST['billing_year']);
+        
+        // Validate inputs
+        if (empty($member_id) || empty($amount) || empty($payment_method) || empty($billing_month) || empty($billing_year)) {
+            $error = 'Please fill in all fields.';
+        } elseif (!is_numeric($amount) || $amount <= 0) {
+            $error = 'Invalid amount.';
+        } else {
+            // Check if member exists
+            $member_query = "SELECT * FROM members WHERE member_id = :member_id";
+            $member_stmt = $db->prepare($member_query);
+            $member_stmt->execute([':member_id' => $member_id]);
+            $member = $member_stmt->fetch();
+            
+            if (!$member) {
+                $error = 'Member not found.';
+            } else {
+                // Check annual limit
+                $yearly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
+                               WHERE member_id = :member_id AND billing_cycle_year = :year";
+                $yearly_stmt = $db->prepare($yearly_query);
+                $yearly_stmt->execute([':member_id' => $member_id, ':year' => $billing_year]);
+                $yearly_total = $yearly_stmt->fetch()['total'];
+                
+                $settings_query = "SELECT annual_amount FROM settings WHERE id = 1";
+                $settings = $db->query($settings_query)->fetch();
+                $annual_limit = $settings ? $settings['annual_amount'] : 0;
+                
+                if (($yearly_total + $amount) > $annual_limit) {
+                    $error = "Annual limit of GH₵ {$annual_limit} would be exceeded. Current total: GH₵ {$yearly_total}";
+                } else {
+                    // Generate receipt number
+                    $receipt_no = generateReceiptNumber();
+                    
+                    // Insert transaction
+                    $query = "INSERT INTO transactions (receipt_no, member_id, treasurer_id, amount, 
+                             payment_method, billing_cycle_month, billing_cycle_year) 
+                             VALUES (:receipt_no, :member_id, :treasurer_id, :amount, 
+                             :payment_method, :billing_month, :billing_year)";
+                    
+                    $stmt = $db->prepare($query);
+                    
+                    try {
+                        $stmt->execute([
+                            ':receipt_no' => $receipt_no,
+                            ':member_id' => $member_id,
+                            ':treasurer_id' => $_SESSION['user_id'],
+                            ':amount' => $amount,
+                            ':payment_method' => $payment_method,
+                            ':billing_month' => $billing_month,
+                            ':billing_year' => $billing_year
+                        ]);
+                        
+                        logAudit($_SESSION['user_id'], "Recorded payment of GH₵ {$amount} for member {$member_id}");
+                        $success = "Payment recorded successfully! Receipt No: {$receipt_no}";
+                        
+                        // Store receipt for display
+                        $_SESSION['last_receipt'] = [
+                            'receipt_no' => $receipt_no,
+                            'member_name' => $member['full_name'],
+                            'member_id' => $member_id,
+                            'amount' => $amount,
+                            'payment_method' => $payment_method,
+                            'billing_period' => date('F Y', mktime(0, 0, 0, $billing_month, 1, $billing_year)),
+                            'date' => date('Y-m-d H:i:s')
+                        ];
+                        
+                        // Send receipt email to member
+                        $receipt_data = [
+                            'receipt_no' => $receipt_no,
+                            'member_name' => $member['full_name'],
+                            'member_id' => $member_id,
+                            'amount' => $amount,
+                            'payment_method' => $payment_method,
+                            'billing_period' => date('F Y', mktime(0, 0, 0, $billing_month, 1, $billing_year)),
+                            'date' => date('Y-m-d H:i:s')
+                        ];
+                        
+                        sendReceiptEmail($member['email'], $receipt_data, $member['passport_photo']);
+                        
+                    } catch (PDOException $e) {
+                        if (strpos($e->getMessage(), 'unique_member_billing') !== false) {
+                            $error = 'Payment already recorded for this billing cycle.';
+                        } else {
+                            $error = 'Transaction failed. Please try again.';
+                            error_log("Transaction Error: " . $e->getMessage());
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+            
+
+// Search members for transaction
+$search_results = [];
+if (isset($_GET['search'])) {
+    $search_term = sanitizeInput($_GET['search']);
+    $search_query = "SELECT member_id, full_name, passport_photo, phone 
+                    FROM members 
+                    WHERE (member_id LIKE :search1 OR full_name LIKE :search2 OR phone LIKE :search3)
+                    AND member_id != 'GYF-ADMIN'";
+    $search_stmt = $db->prepare($search_query);
+    $search_param = "%{$search_term}%";
+    $search_stmt->execute([
+        ':search1' => $search_param,
+        ':search2' => $search_param,
+        ':search3' => $search_param
+    ]);
+    $search_results = $search_stmt->fetchAll();
+}
+
+// Get transaction history with filters
+$where_clause = "WHERE 1=1";
+$params = [];
+
+if (isset($_GET['filter_member']) && !empty($_GET['filter_member'])) {
+    $where_clause .= " AND t.member_id = :filter_member";
+    $params[':filter_member'] = sanitizeInput($_GET['filter_member']);
+}
+
+if (isset($_GET['filter_date']) && !empty($_GET['filter_date'])) {
+    $where_clause .= " AND DATE(t.transaction_date) = :filter_date";
+    $params[':filter_date'] = sanitizeInput($_GET['filter_date']);
+}
+
+if (isset($_GET['filter_method']) && !empty($_GET['filter_method'])) {
+    $where_clause .= " AND t.payment_method = :filter_method";
+    $params[':filter_method'] = sanitizeInput($_GET['filter_method']);
+}
+
+$transactions_query = "SELECT t.*, m.full_name, m.passport_photo 
+                      FROM transactions t 
+                      JOIN members m ON t.member_id = m.member_id 
+                      {$where_clause} 
+                      ORDER BY t.transaction_date DESC 
+                      LIMIT 50";
+
+$transactions_stmt = $db->prepare($transactions_query);
+$transactions_stmt->execute($params);
+$transactions = $transactions_stmt->fetchAll();
+?>
+
+<div class="row">
+    <div class="col-12">
+        <h2 class="mb-4">Transaction Management</h2>
+    </div>
+</div>
+
+<?php if ($success): ?>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <?php echo $success; ?>
+        <?php if (isset($_SESSION['last_receipt'])): ?>
+            <button class="btn btn-sm btn-success ms-3" onclick="window.print()">
+                🖨️ Print Receipt
+            </button>
+        <?php endif; ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    
+    <?php if (isset($_SESSION['last_receipt'])): ?>
+        <div class="receipt mb-4" id="printableReceipt">
+            <div class="text-center mb-3">
+                <h4>GYF Welfare Management System</h4>
+                <h5>Payment Receipt</h5>
+            </div>
+            <table class="table table-bordered">
+                <tr>
+                    <td><strong>Receipt No:</strong></td>
+                    <td><?php echo $_SESSION['last_receipt']['receipt_no']; ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Member:</strong></td>
+                    <td><?php echo $_SESSION['last_receipt']['member_name']; ?> (<?php echo $_SESSION['last_receipt']['member_id']; ?>)</td>
+                </tr>
+                <tr>
+                    <td><strong>Amount:</strong></td>
+                    <td>GH₵ <?php echo number_format($_SESSION['last_receipt']['amount'], 2); ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Payment Method:</strong></td>
+                    <td><?php echo $_SESSION['last_receipt']['payment_method']; ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Billing Period:</strong></td>
+                    <td><?php echo $_SESSION['last_receipt']['billing_period']; ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Date:</strong></td>
+                    <td><?php echo date('F j, Y g:i A', strtotime($_SESSION['last_receipt']['date'])); ?></td>
+                </tr>
+            </table>
+            <div class="text-center mt-3">
+                <small>This is a computer-generated receipt</small>
+            </div>
+        </div>
+        <?php unset($_SESSION['last_receipt']); ?>
+    <?php endif; ?>
+<?php endif; ?>
+
+<?php if ($error): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <?php echo $error; ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+<?php endif; ?>
+
+<!-- Record Payment Button -->
+<div class="row mb-4">
+    <div class="col-12">
+        <button class="btn btn-primary btn-lg" type="button" onclick="openPaymentModal()">
+            ➕ Record New Payment
+        </button>
+        <a href="<?php echo APP_URL; ?>/api/transactions.php?action=export_csv" class="btn btn-success btn-lg ms-2">📊 Export to CSV</a>
+        <a href="<?php echo APP_URL; ?>/api/transactions.php?action=export_pdf" class="btn btn-danger btn-lg ms-2">📄 Export to PDF</a>
+    </div>
+</div>
+
+<!-- Payment Modal -->
+<div class="modal fade" id="paymentModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Record New Payment</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Member Search -->
+                <div class="mb-4">
+                    <label class="form-label">Search Member</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="memberSearch" 
+                               placeholder="Search by name, member ID, or phone...">
+                        <button class="btn btn-primary" type="button" onclick="searchMembers()">Search</button>
+                    </div>
+                    <div id="searchResults" class="mt-2"></div>
+                </div>
+                
+                 <!-- Payment Form -->
+                <form method="POST" action="" id="paymentForm">
+                    <input type="hidden" name="action" value="record_payment">
+                    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+                    <input type="hidden" name="member_id" id="selectedMemberId">
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="amount" class="form-label">Amount (GH₵) *</label>
+                            <input type="number" class="form-control" id="amount" name="amount" 
+                                   step="0.01" min="0.01" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="payment_method" class="form-label">Payment Method *</label>
+                            <select class="form-control" id="payment_method" name="payment_method" required>
+                                <option value="">Select Method</option>
+                                <option value="Cash">Cash</option>
+                                <option value="Mobile Money">Mobile Money</option>
+                                <option value="Bank Transfer">Bank Transfer</option>
+                                <option value="Card">Card</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="billing_month" class="form-label">Billing Month *</label>
+                            <select class="form-control" id="billing_month" name="billing_month" required>
+                                <option value="">Select Month</option>
+                                <?php for ($m = 1; $m <= 12; $m++): ?>
+                                    <option value="<?php echo $m; ?>" <?php echo $m == date('m') ? 'selected' : ''; ?>>
+                                        <?php echo date('F', mktime(0, 0, 0, $m, 1)); ?>
+                                    </option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="billing_year" class="form-label">Billing Year *</label>
+                            <select class="form-control" id="billing_year" name="billing_year" required>
+                                <?php for ($y = date('Y') - 1; $y <= date('Y') + 1; $y++): ?>
+                                    <option value="<?php echo $y; ?>" <?php echo $y == date('Y') ? 'selected' : ''; ?>>
+                                        <?php echo $y; ?>
+                                    </option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <strong>Selected Member:</strong> <span id="selectedMemberName">None</span>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary w-100" id="submitPayment" disabled>
+                        Record Payment
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transaction History -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Transaction History</h5>
+            </div>
+            <div class="card-body">
+                <!-- Filters -->
+                <form method="GET" action="" class="row mb-3">
+                    <div class="col-md-4 mb-2">
+                        <input type="text" class="form-control" name="filter_member" 
+                               placeholder="Filter by Member ID">
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <input type="date" class="form-control" name="filter_date">
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <select class="form-control" name="filter_method">
+                            <option value="">All Methods</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Mobile Money">Mobile Money</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Card">Card</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <button type="submit" class="btn btn-primary w-100">Filter</button>
+                    </div>
+                </form>
+                
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Receipt No</th>
+                                <th>Member</th>
+                                <th>Amount</th>
+                                <th>Method</th>
+                                <th>Billing Period</th>
+                                <th>Date</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($transactions as $transaction): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($transaction['receipt_no']); ?></td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <?php if ($transaction['passport_photo']): ?>
+                                                <img src="<?php echo APP_URL; ?>/uploads/photos/<?php echo $transaction['passport_photo']; ?>" 
+                                                     class="member-photo me-2" alt="Photo">
+                                            <?php endif; ?>
+                                            <div>
+                                                <strong><?php echo htmlspecialchars($transaction['full_name']); ?></strong>
+                                                <br>
+                                                <small><?php echo $transaction['member_id']; ?></small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>GH₵ <?php echo number_format($transaction['amount'], 2); ?></td>
+                                    <td>
+                                        <span class="badge bg-<?php 
+                                            echo $transaction['payment_method'] == 'Cash' ? 'success' : 
+                                                ($transaction['payment_method'] == 'Mobile Money' ? 'warning' : 
+                                                ($transaction['payment_method'] == 'Bank Transfer' ? 'info' : 'primary')); 
+                                        ?>">
+                                            <?php echo $transaction['payment_method']; ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php 
+                                        if ($transaction['billing_cycle_month']) {
+                                            echo date('M', mktime(0, 0, 0, $transaction['billing_cycle_month'], 1)) . ' ' . $transaction['billing_cycle_year'];
+                                        } else {
+                                            echo $transaction['billing_cycle_year'];
+                                        }
+                                        ?>
+                                    </td>
+                                    <td><?php echo date('M d, Y', strtotime($transaction['transaction_date'])); ?></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-info" onclick="viewReceipt(<?php echo $transaction['id']; ?>)">
+                                            👁️ View
+                                        </button>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function searchMembers() {
+    const searchTerm = document.getElementById('memberSearch').value;
+    if (searchTerm.length < 2) {
+        alert('Please enter at least 2 characters to search');
+        return;
+    }
+    
+    fetch(`<?php echo APP_URL; ?>/api/members.php?action=search&term=${encodeURIComponent(searchTerm)}`)
+        .then(response => response.json())
+        .then(data => {
+            let html = '';
+            if (data.success && data.members.length > 0) {
+                data.members.forEach(member => {
+                    html += `
+                        <div class="card mb-2 member-card" style="cursor: pointer;" 
+                             onclick="selectMember('${member.member_id}', '${member.full_name}')">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center">
+                                    ${member.passport_photo ? 
+                                        `<img src="<?php echo APP_URL; ?>/uploads/photos/${member.passport_photo}" 
+                                              class="member-photo me-3">` : ''}
+                                    <div>
+                                        <strong>${member.full_name}</strong><br>
+                                        <small>${member.member_id} | ${member.phone}</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            } else {
+                html = '<div class="alert alert-warning">No members found</div>';
+            }
+            document.getElementById('searchResults').innerHTML = html;
+        });
+}
+
+function selectMember(memberId, memberName) {
+    document.getElementById('selectedMemberId').value = memberId;
+    document.getElementById('selectedMemberName').textContent = memberName;
+    document.getElementById('submitPayment').disabled = false;
+    document.getElementById('searchResults').innerHTML = '';
+    document.getElementById('memberSearch').value = memberName;
+}
+
+function viewReceipt(transactionId) {
+    window.open(`<?php echo APP_URL; ?>/api/transactions.php?action=receipt&id=${transactionId}`, 
+                'Receipt', 'width=600,height=400');
+}
+
+let _paymentModalInstance = null;
+function openPaymentModal() {
+    const el = document.getElementById('paymentModal');
+    if (!el) return;
+    if (!_paymentModalInstance) {
+        _paymentModalInstance = new bootstrap.Modal(el, { backdrop: true, keyboard: true });
+    }
+    _paymentModalInstance.show();
+}
+
+// Export functions
+<?php if (isset($_GET['export'])): ?>
+    <?php if ($_GET['export'] == 'csv'): ?>
+        // CSV Export logic
+        window.location.href = '<?php echo APP_URL; ?>/api/transactions.php?action=export_csv';
+    <?php endif; ?>
+<?php endif; ?>
+</script>
+
+<style>
+.member-card {
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+.member-card:hover {
+    border-color: var(--dark-blue);
+    background-color: var(--light-blue);
+}
+</style>
+
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>

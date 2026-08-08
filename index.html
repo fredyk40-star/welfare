@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1976d2">
+    <meta name="description" content="GYF Welfare Management System - Gentil Ministry & Prayer Camp">
+    <title>GYF Welfare Management System</title>
+    
+    <!-- Bootstrap 5 CSS (Local) -->
+    <link rel="stylesheet" href="assets/bootstrap/css/bootstrap.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="assets/css/style.css">
+    
+    <!-- Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" href="assets/icons/icon-192x192.png">
+</head>
+<body>
+    <div class="container">
+        <div class="row justify-content-center align-items-center min-vh-100">
+            <div class="col-md-6 text-center slide-up">
+                <div class="glass p-5">
+                    <div class="mb-4">
+                        <img src="uploads/photos/logo.png" alt="GYF Welfare" class="app-logo-large">
+                    </div>
+                    <h1 class="display-4 mb-4">
+                        GYF Welfare
+                    </h1>
+                    <p class="lead mb-4" style="color: var(--text-secondary);">
+                        Gentil Ministry & Prayer Camp<br>
+                        Welfare Management System
+                    </p>
+                    
+                    <div class="d-grid gap-3">
+                        <a href="member/login.php" class="btn btn-primary btn-lg">
+                            👤 Member Login
+                        </a>
+                        <a href="member/register.php" class="btn btn-outline-primary btn-lg">
+                            📝 Member Registration
+                        </a>
+                        <a href="treasurer/login.php" class="btn btn-warning btn-lg">
+                            💼 Treasurer Access
+                        </a>
+                    </div>
+                    
+                    <hr class="my-4" style="border-color: var(--glass-border);">
+                    
+                    <div class="row">
+                        <div class="col-4">
+                            <div class="stat-card p-2">
+                                <small style="color: var(--text-muted);">Secure</small>
+                                <br>🔒
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-card p-2">
+                                <small style="color: var(--text-muted);">Efficient</small>
+                                <br>⚡
+                            </div>
+                        </div>
+                        <div class="col-4">
+                            <div class="stat-card p-2">
+                                <small style="color: var(--text-muted);">Reliable</small>
+                                <br>✅
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                        <p class="mt-4" style="color: var(--text-muted);">
+                            <small>© <span id="currentYear"></span> GYF Ministry & Prayer Camp. All rights reserved.</small>
+                        </p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="assets/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/main.js"></script>
+    
+    <script>
+        // Update copyright year
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+
+        // Replace any old service worker with a self-destructing one that
+        // purges all caches and unregisters itself (no offline caching).
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('service-worker.js', { scope: './' })
+                .catch(function () {});
+        }
+    </script>
+</body>
+</html>
