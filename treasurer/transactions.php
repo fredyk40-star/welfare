@@ -154,6 +154,16 @@ if (isset($_GET['filter_method']) && !empty($_GET['filter_method'])) {
     $params[':filter_method'] = sanitizeInput($_GET['filter_method']);
 }
 
+if (isset($_GET['filter_month']) && !empty($_GET['filter_month'])) {
+    $where_clause .= " AND t.billing_cycle_month = :filter_month";
+    $params[':filter_month'] = (int) date('m');
+}
+
+if (isset($_GET['filter_year']) && !empty($_GET['filter_year'])) {
+    $where_clause .= " AND t.billing_cycle_year = :filter_year";
+    $params[':filter_year'] = (int) date('Y');
+}
+
 $transactions_query = "SELECT t.*, m.full_name, m.passport_photo 
                       FROM transactions t 
                       JOIN members m ON t.member_id = m.member_id 
@@ -310,7 +320,15 @@ $transactions = $transactions_stmt->fetchAll();
                     </div>
                     
                     <div class="alert alert-info">
-                        <strong>Selected Member:</strong> <span class="selected-dot" id="selectedDot"></span><span id="selectedMemberName">None</span>
+                        <div><strong>Selected Member:</strong> <span class="selected-dot" id="selectedDot"></span><span id="selectedMemberName">None</span></div>
+                        <div id="memberProgress" class="mt-2" style="display:none;">
+                            <small class="text-muted">Annual progress:</small>
+                            <div class="progress mt-1" style="height:8px;">
+                                <div class="progress-bar bg-success" id="memberProgressBar" role="progressbar" style="width:0%;"></div>
+                            </div>
+                            <small id="memberProgressText" class="text-muted"></small>
+                        </div>
+                        <div id="dupWarning" class="mt-2" style="display:none;"></div>
                     </div>
                     
                     <button type="submit" class="btn btn-primary w-100" id="submitPayment" disabled>
@@ -406,6 +424,9 @@ $transactions = $transactions_stmt->fetchAll();
                                     <td>
                                         <button class="btn btn-sm btn-info" onclick="viewReceipt(<?php echo (int)$transaction['id']; ?>)">
                                             👁️ View
+                                        </button>
+                                        <button class="btn btn-sm btn-success" onclick="printReceipt(<?php echo (int)$transaction['id']; ?>)">
+                                            🖨️ Print
                                         </button>
                                     </td>
                                 </tr>
@@ -603,6 +624,122 @@ document.addEventListener('click', function (e) {
     if (!card) return;
     selectMember(card.getAttribute('data-member-id'), card.getAttribute('data-member-name'));
 });
+
+// ---- Feature: debounced search-as-you-type ----
+let _searchTimer = null;
+document.getElementById('memberSearch').addEventListener('input', function () {
+    clearTimeout(_searchTimer);
+    const v = this.value;
+    if (v.length < 2) { document.getElementById('searchResults').innerHTML = ''; return; }
+    _searchTimer = setTimeout(searchMembers, 350);
+});
+
+// ---- Feature: member annual progress + duplicate-cycle warning ----
+function refreshMemberContext(memberId) {
+    if (!memberId) {
+        document.getElementById('memberProgress').style.display = 'none';
+        document.getElementById('dupWarning').style.display = 'none';
+        return;
+    }
+    const month = document.getElementById('billing_month').value;
+    const year = document.getElementById('billing_year').value;
+    const base = '<?php echo APP_URL; ?>/api/members.php';
+    fetch(base + '?action=details&member_id=' + encodeURIComponent(memberId))
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) return;
+            const m = d.member;
+            const ytd = parseFloat(m.ytd_paid || 0);
+            const target = parseFloat(m.annual_target || 0);
+            const pct = target > 0 ? Math.min(100, Math.round((ytd / target) * 100)) : 0;
+            document.getElementById('memberProgress').style.display = 'block';
+            document.getElementById('memberProgressBar').style.width = pct + '%';
+            document.getElementById('memberProgressText').textContent =
+                'GH₵ ' + ytd.toFixed(2) + ' of GH₵ ' + target.toFixed(2) + ' (' + pct + '%)';
+        })
+        .catch(() => {});
+    checkDuplicate(memberId, month, year);
+}
+
+function checkDuplicate(memberId, month, year) {
+    const box = document.getElementById('dupWarning');
+    if (!memberId || !month || !year) { box.style.display = 'none'; return; }
+    fetch('<?php echo APP_URL; ?>/api/transactions.php?action=check_duplicate&member_id=' +
+        encodeURIComponent(memberId) + '&month=' + encodeURIComponent(month) + '&year=' + encodeURIComponent(year))
+        .then(r => r.json())
+        .then(d => {
+            if (d.success && d.exists) {
+                box.style.display = 'block';
+                box.className = 'mt-2 alert alert-warning py-2 mb-0';
+                box.innerHTML = '⚠️ This member already has a payment recorded for ' +
+                    d.month_name + ' ' + d.year + ' (Receipt ' + d.receipt_no + '). Recording again will be blocked.';
+            } else {
+                box.style.display = 'none';
+            }
+        })
+        .catch(() => { box.style.display = 'none'; });
+}
+
+// Re-check duplicate when billing month/year changes
+['billing_month', 'billing_year'].forEach(function (id) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', function () {
+        checkDuplicate(document.getElementById('selectedMemberId').value,
+            document.getElementById('billing_month').value,
+            document.getElementById('billing_year').value);
+    });
+});
+
+// Hook into selectMember: show context after selection
+const _origSelect = selectMember;
+selectMember = function (memberId, memberName) {
+    _origSelect(memberId, memberName);
+    refreshMemberContext(memberId);
+};
+
+// ---- Feature: quick filter chips ----
+(function () {
+    const chips = document.querySelectorAll('.quick-filter');
+    chips.forEach(function (chip) {
+        chip.addEventListener('click', function () {
+            chips.forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            const f = chip.getAttribute('data-filter');
+            const cur = new URLSearchParams(window.location.search);
+            cur.delete('filter_member'); cur.delete('filter_date'); cur.delete('filter_method');
+            if (f === 'month') { cur.set('filter_month', '1'); }
+            else if (f === 'year') { cur.set('filter_year', '1'); }
+            else if (f !== 'all') { cur.set('filter_method', f); }
+            else { cur.delete('filter_month'); cur.delete('filter_year'); }
+            window.location.search = cur.toString();
+        });
+    });
+
+    const toggle = document.getElementById('advanceToggle');
+    if (toggle) toggle.addEventListener('click', function () {
+        const adv = document.getElementById('advanceFilters');
+        adv.style.display = adv.style.display === 'none' ? 'block' : 'none';
+    });
+    const apply = document.getElementById('applyFilters');
+    if (apply) apply.addEventListener('click', function () {
+        const cur = new URLSearchParams(window.location.search);
+        const m = document.getElementById('filterMember').value;
+        const d = document.getElementById('filterDate').value;
+        const me = document.getElementById('filterMethod').value;
+        if (m) cur.set('filter_member', m); else cur.delete('filter_member');
+        if (d) cur.set('filter_date', d); else cur.delete('filter_date');
+        if (me) cur.set('filter_method', me); else cur.delete('filter_method');
+        cur.delete('filter_month'); cur.delete('filter_year');
+        window.location.search = cur.toString();
+    });
+})();
+
+// ---- Feature: print single receipt from history ----
+function printReceipt(transactionId) {
+    window.open('<?php echo APP_URL; ?>/api/transactions.php?action=receipt&id=' + transactionId + '&print=1',
+        'Receipt', 'width=600,height=400');
+}
+
 </script>
 
 <style>

@@ -46,13 +46,24 @@ switch ($action) {
         }
         
         $member_id = sanitizeInput($_GET['member_id']);
-        $query = "SELECT * FROM members WHERE member_id = :member_id";
-        $stmt = $db->prepare($query);
-        $stmt->execute([':member_id' => $member_id]);
-        $member = $stmt->fetch();
-        
+
+        $year = (int) date('Y');
+        $member_stmt = $db->prepare("SELECT * FROM members WHERE member_id = :member_id");
+        $member_stmt->execute([':member_id' => $member_id]);
+        $member = $member_stmt->fetch();
+
         if ($member) {
             unset($member['password']); // Remove sensitive data
+
+            // Annual target from settings
+            $settings = $db->query("SELECT annual_amount FROM settings WHERE id = 1")->fetch();
+            $member['annual_target'] = $settings ? (float) $settings['annual_amount'] : 0;
+
+            // Year-to-date paid
+            $ytd = $db->prepare("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE member_id = :mid AND billing_cycle_year = :yr");
+            $ytd->execute([':mid' => $member_id, ':yr' => $year]);
+            $member['ytd_paid'] = (float) $ytd->fetch()['total'];
+
             echo json_encode(['success' => true, 'member' => $member]);
         } else {
             echo json_encode(['success' => false, 'message' => 'Member not found']);

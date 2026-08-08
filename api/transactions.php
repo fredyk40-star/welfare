@@ -8,6 +8,37 @@ $db = $database->getConnection();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
 switch ($action) {
+    case 'check_duplicate':
+        if (!isTreasurer()) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit();
+        }
+        $member_id = sanitizeInput($_GET['member_id'] ?? '');
+        $month = (int) ($_GET['month'] ?? 0);
+        $year = (int) ($_GET['year'] ?? 0);
+
+        if (!$member_id || !$month || !$year) {
+            echo json_encode(['success' => true, 'exists' => false]);
+            exit();
+        }
+
+        $stmt = $db->prepare("SELECT receipt_no FROM transactions WHERE member_id = :mid AND billing_cycle_month = :m AND billing_cycle_year = :y LIMIT 1");
+        $stmt->execute([':mid' => $member_id, ':m' => $month, ':y' => $year]);
+        $row = $stmt->fetch();
+
+        if ($row) {
+            echo json_encode([
+                'success' => true,
+                'exists' => true,
+                'receipt_no' => $row['receipt_no'],
+                'month_name' => date('F', mktime(0, 0, 0, $month, 1)),
+                'year' => $year
+            ]);
+        } else {
+            echo json_encode(['success' => true, 'exists' => false]);
+        }
+        break;
+
     case 'receipt':
         if (!isLoggedIn()) {
             die('Unauthorized');
@@ -267,8 +298,13 @@ switch ($action) {
                 }
             </style>
         </head>
-        <body>
-            <div class="container">
+                <body>
+                <?php if (isset($_GET['print'])): ?>
+                <script>
+                    window.onload = function() { window.print(); };
+                </script>
+                <?php endif; ?>
+                <div class="container">
                 <div class="d-flex justify-content-between align-items-center mb-4">
                     <h2><?php echo $title; ?></h2>
                     <button class="btn btn-primary no-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
