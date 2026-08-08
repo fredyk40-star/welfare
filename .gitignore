@@ -18,3 +18,13 @@ Thumbs.db
 
 # Keep uploads folder but ignore user-uploaded binaries if desired
 # (uploads/ is kept so the app has its assets)
+uploads/*.jpg
+uploads/*.jpeg
+uploads/*.png
+uploads/*.gif
+uploads/*.pdf
+uploads/*.crdownload
+
+# Local audit reports and temp files
+New Folder/
+*.crdownload
