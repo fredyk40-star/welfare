@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../includes/header.php';
 
 // Check if user is treasurer
@@ -468,11 +468,17 @@ function searchMembers() {
 }
 
 function selectMember(memberId, memberName) {
-    document.getElementById('selectedMemberId').value = memberId;
-    document.getElementById('selectedMemberName').textContent = memberName;
-    document.getElementById('submitPayment').disabled = false;
-    document.getElementById('searchResults').innerHTML = '';
-    document.getElementById('memberSearch').value = memberName;
+    const idEl = document.getElementById('selectedMemberId');
+    const nameEl = document.getElementById('selectedMemberName');
+    const resultsEl = document.getElementById('searchResults');
+    const searchEl = document.getElementById('memberSearch');
+    const submitEl = document.getElementById('submitPayment');
+    if (!idEl || !nameEl) return;
+    idEl.value = memberId;
+    nameEl.textContent = memberName;
+    if (resultsEl) resultsEl.innerHTML = '';
+    if (searchEl) searchEl.value = memberName;
+    if (submitEl) submitEl.disabled = false;
 }
 
 function viewReceipt(transactionId) {

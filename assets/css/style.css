@@ -1,4 +1,4 @@
-/* GYF Welfare Management System - Glassmorphism Styles */
+﻿/* GYF Welfare Management System - Glassmorphism Styles */
 
 /* Local Inter font faces — self-hosted to eliminate external font requests */
 @font-face {
@@ -89,6 +89,33 @@ body {
     overflow-x: hidden;
 }
 
+/* Background slideshow layer */
+.bg-slideshow {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -3;
+    overflow: hidden;
+}
+
+.bg-slideshow .slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-position: center center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    opacity: 0;
+    transition: opacity 1.5s ease-in-out;
+}
+
+.bg-slideshow .slide.active {
+    opacity: 1;
+}
 /* Background with glassmorphism effect */
 body::before {
     content: '';
@@ -98,8 +125,7 @@ body::before {
     width: 100%;
     height: 100%;
     background: 
-        linear-gradient(rgba(10, 10, 10, 0.35), rgba(10, 10, 10, 0.35)),
-        url('../../uploads/glassmorphism-background.jpg') center center / cover no-repeat fixed;
+        linear-gradient(rgba(10, 10, 10, 0.55), rgba(10, 10, 10, 0.55));
     z-index: -2;
 }
 
@@ -1274,5 +1300,26 @@ hr {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
 }
+/* Modal positioning override: clear sticky navbar, keep internal scroll.
+   Placed last so it wins over the generic .modal-dialog margin rules above. */
+.modal-dialog {
+    margin-top: 60px !important;
+    max-height: calc(100vh - 80px);
+}
 
+.modal-dialog .modal-content {
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+}
 
+@media (max-width: 575px) {
+    .modal-dialog {
+        margin-top: 40px !important;
+        margin-left: 0.5rem !important;
+        margin-right: 0.5rem !important;
+        max-height: calc(100vh - 50px);
+    }
+    .modal-dialog .modal-content {
+        max-height: calc(100vh - 50px);
+    }
+}

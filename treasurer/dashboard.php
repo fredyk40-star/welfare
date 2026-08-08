@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 require_once __DIR__ . '/../includes/header.php';
 
 // Check if user is treasurer
@@ -287,10 +287,15 @@ function searchMembers() {
 }
 
 function selectMember(id, name) {
-    document.getElementById('selectedMemberId').value = id;
-    document.getElementById('selectedMemberName').textContent = name;
-    document.getElementById('searchResults').innerHTML = '';
-    document.getElementById('memberSearch').value = name;
+    const idEl = document.getElementById('selectedMemberId');
+    const nameEl = document.getElementById('selectedMemberName');
+    const resultsEl = document.getElementById('searchResults');
+    const searchEl = document.getElementById('memberSearch');
+    if (!idEl || !nameEl) return;
+    idEl.value = id;
+    nameEl.textContent = name;
+    if (resultsEl) resultsEl.innerHTML = '';
+    if (searchEl) searchEl.value = name;
 }
 
 // Auto-open payment modal if action=new is in URL
