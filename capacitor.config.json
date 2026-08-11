@@ -3,7 +3,7 @@
   "appName": "GYF Welfare",
   "webDir": "www",
   "server": {
-    "url": "https://your-vercel-app.vercel.app",
+    "url": "https://",
     "androidScheme": "https",
     "cleartext": false
   },
