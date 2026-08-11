@@ -1,0 +1,13 @@
+# Vercel build exclusions - keep the serverless function bundle small
+node_modules/
+android/
+www/
+.kilo/
+.vscode/
+uploads/
+*.log
+
+# Local-only / secret files
+.env
+.env.local
+service-worker.js
