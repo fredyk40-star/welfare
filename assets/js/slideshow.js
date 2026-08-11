@@ -18,7 +18,7 @@
     })();
     const images = [];
 
-    images.push(base + 'uploads/glassmorphism-background.jpg');
+    images.push(base + 'assets/images/glassmorphism-background.jpg');
 
     const slides = [];
     let current = 0;

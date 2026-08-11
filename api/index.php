@@ -21,6 +21,56 @@ if ($requestUri === '/') {
     exit;
 }
 
+// Static asset serving.
+// Because vercel-php@0.9.0 with a single `builds` entry emits only the Lambda
+// (no static-file output), Vercel's `{ "handle": "filesystem" }` matches nothing
+// and every /assets/* 404s. The Lambda does have filesystem access to the whole
+// project, so we stream real static files here with correct Content-Type.
+$staticMime = [
+    'css'   => 'text/css; charset=utf-8',
+    'js'    => 'application/javascript; charset=utf-8',
+    'mjs'   => 'application/javascript; charset=utf-8',
+    'json'  => 'application/json; charset=utf-8',
+    'map'   => 'application/json; charset=utf-8',
+    'txt'   => 'text/plain; charset=utf-8',
+    'html'  => 'text/html; charset=utf-8',
+    'htm'   => 'text/html; charset=utf-8',
+    'png'   => 'image/png',
+    'jpg'   => 'image/jpeg',
+    'jpeg'  => 'image/jpeg',
+    'gif'   => 'image/gif',
+    'svg'   => 'image/svg+xml',
+    'webp'  => 'image/webp',
+    'ico'   => 'image/x-icon',
+    'woff'  => 'font/woff',
+    'woff2' => 'font/woff2',
+    'ttf'   => 'font/ttf',
+    'eot'   => 'application/vnd.ms-fontobject',
+    'pdf'   => 'application/pdf',
+];
+$normalizedStatic = ltrim($requestUri, '/');
+// Reject traversal and anything outside the project.
+if (strpos($normalizedStatic, '..') === false && $normalizedStatic !== '') {
+    $staticPath = __DIR__ . '/../' . $normalizedStatic;
+    if (is_file($staticPath)) {
+        $ext = strtolower(pathinfo($staticPath, PATHINFO_EXTENSION));
+        // Never serve PHP sources or sensitive config as static content.
+        $blockedTop = ['includes', 'config', 'api', '.vercel', '.git'];
+        $topDir = explode('/', $normalizedStatic)[0];
+        if ($ext === 'php' || in_array(strtolower($topDir), $blockedTop, true)) {
+            http_response_code(404);
+            echo 'Not found';
+            exit;
+        }
+        if (isset($staticMime[$ext])) {
+            header('Content-Type: ' . $staticMime[$ext]);
+            header('Cache-Control: public, max-age=3600');
+            readfile($staticPath);
+            exit;
+        }
+    }
+}
+
 // Only allow requests that map to a real .php file directly under the project root.
 // Block traversal and anything outside the allowed top-level dirs.
 $allowedTop = ['member', 'treasurer', 'api'];
