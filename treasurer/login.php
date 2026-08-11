@@ -274,7 +274,7 @@ if (isset($_GET['reset']) && $_GET['reset'] === 'success') {
             <div class="col-md-5 col-lg-4">
                 <!-- Logo/Brand -->
                 <div class="text-center mb-4">
-                    <img src="<?php echo APP_URL; ?>/uploads/photos/logo.png" alt="GYF Welfare" class="app-logo-large">
+                    <img src="<?php echo APP_URL; ?>/assets/images/logo.png" alt="GYF Welfare" class="app-logo-large">
                     <h2 class="text-white fw-bold mt-3">
                         GYF Welfare
                     </h2>

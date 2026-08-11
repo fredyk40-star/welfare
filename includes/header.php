@@ -29,7 +29,7 @@ require_once __DIR__ . '/security.php';
     <nav class="navbar navbar-expand-lg sticky-top">
         <div class="container-fluid px-3">
             <a class="navbar-brand" href="<?php echo APP_URL; ?>">
-                <img src="<?php echo APP_URL; ?>/uploads/photos/logo.png" alt="GYF Welfare" class="app-logo">
+                <img src="<?php echo APP_URL; ?>/assets/images/logo.png" alt="GYF Welfare" class="app-logo">
                 <span class="d-none d-sm-inline">GYF Welfare</span>
                 <span class="d-inline d-sm-none">GYF</span>
             </a>

@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 <div class="card glass-strong">
                     <div class="card-body text-center">
-                        <img src="<?php echo APP_URL; ?>/uploads/photos/logo.png" alt="GYF Welfare" class="app-logo-large mb-3">
+                        <img src="<?php echo APP_URL; ?>/assets/images/logo.png" alt="GYF Welfare" class="app-logo-large mb-3">
                         <h3>Member Login</h3>
                     </div>
                     <div class="card-body">
