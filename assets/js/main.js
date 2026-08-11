@@ -116,3 +116,47 @@ function openPaymentModal() {
     }
     _paymentModalInstance.show();
 }
+
+
+// Render QR codes from otpauth URIs
+function renderQRCode() {
+    document.querySelectorAll('.qrcode-canvas').forEach(function(el) {
+        var uri = el.dataset.otpauth;
+        if (uri && typeof QRCode !== 'undefined') {
+            el.innerHTML = '';
+            new QRCode(el, {
+                text: uri,
+                width: 200,
+                height: 200,
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    renderQRCode();
+});
+// Toast notification helper
+function showToast(message, type) {
+    const container = document.getElementById('toastContainer');
+    if (!container) { alert(message); return; }
+    const toast = document.createElement('div');
+    const bgClass = type === 'success' ? 'bg-success' : (type === 'danger' ? 'bg-danger' : (type === 'warning' ? 'bg-warning' : 'bg-info'));
+    toast.className = 'toast align-items-center text-white ' + bgClass + ' border-0';
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = '<div class="d-flex"><div class="toast-body">' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
+    container.appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast, { delay: 3000 });
+    bsToast.show();
+    toast.addEventListener('hidden.bs.toast', function() { toast.remove(); });
+}
+
+// Event delegation for dynamically generated print buttons
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.js-print-receipt');
+    if (btn) {
+        e.preventDefault();
+        window.print();
+    }
+});

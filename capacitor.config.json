@@ -3,12 +3,14 @@
   "appName": "GYF Welfare",
   "webDir": "www",
   "server": {
-    "androidScheme": "https"
+    "url": "https://your-vercel-app.vercel.app",
+    "androidScheme": "https",
+    "cleartext": false
   },
   "android": {
-    "allowMixedContent": true,
+    "allowMixedContent": false,
     "captureInput": true,
-    "webContentsDebuggingEnabled": true
+    "webContentsDebuggingEnabled": false
   },
   "plugins": {
     "SplashScreen": {

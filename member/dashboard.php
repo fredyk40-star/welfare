@@ -27,23 +27,24 @@ $current_month = date('m');
 
 // Total paid this year
 $yearly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-                 WHERE member_id = :member_id AND billing_cycle_year = :year";
+                 WHERE member_id = :member_id AND billing_cycle_year = :year
+                 AND status != 'void'";
 $yearly_stmt = $db->prepare($yearly_query);
 $yearly_stmt->execute([':member_id' => $member_id, ':year' => $current_year]);
 $yearly_total = $yearly_stmt->fetch()['total'];
 
 // Paid this month
 $monthly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-                  WHERE member_id = :member_id AND billing_cycle_month = :month AND billing_cycle_year = :year";
+                  WHERE member_id = :member_id AND billing_cycle_month = :month AND billing_cycle_year = :year
+                  AND status != 'void'";
 $monthly_stmt = $db->prepare($monthly_query);
 $monthly_stmt->execute([':member_id' => $member_id, ':month' => $current_month, ':year' => $current_year]);
 $monthly_total = $monthly_stmt->fetch()['total'];
 
 // Get settings
-$settings_query = "SELECT * FROM settings WHERE id = 1";
-$settings = $db->query($settings_query)->fetch();
-$annual_target = $settings['annual_amount'] ?? 1;
-$monthly_target = $settings['monthly_amount'] ?? 1;
+$settings = getWelfareSettings($db);
+$annual_target = $settings['annual_amount'];
+$monthly_target = $settings['monthly_amount'];
 
 // Guard against division by zero
 if ($annual_target <= 0) $annual_target = 1;
@@ -55,7 +56,7 @@ $remaining = $annual_target - $yearly_total;
 
 // Get recent transactions
 $recent_query = "SELECT * FROM transactions 
-                 WHERE member_id = :member_id 
+                 WHERE member_id = :member_id AND status != 'void'
                  ORDER BY transaction_date DESC LIMIT 5";
 $recent_stmt = $db->prepare($recent_query);
 $recent_stmt->execute([':member_id' => $member_id]);
@@ -63,7 +64,8 @@ $recent_transactions = $recent_stmt->fetchAll();
 
 // Get months paid this year
 $months_query = "SELECT DISTINCT billing_cycle_month FROM transactions 
-                 WHERE member_id = :member_id AND billing_cycle_year = :year";
+                 WHERE member_id = :member_id AND billing_cycle_year = :year
+                 AND status != 'void'";
 $months_stmt = $db->prepare($months_query);
 $months_stmt->execute([':member_id' => $member_id, ':year' => $current_year]);
 $paid_months = $months_stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -73,12 +75,12 @@ $paid_months = $months_stmt->fetchAll(PDO::FETCH_COLUMN);
     <div class="col-12">
         <div class="d-flex flex-column flex-sm-row align-items-center align-items-sm-center text-center text-sm-start mb-4">
             <?php if ($member['passport_photo']): ?>
-                <img src="<?php echo APP_URL; ?>/uploads/photos/<?php echo htmlspecialchars($member['passport_photo']); ?>" 
+                <img src="<?php echo displayPhotoUrl($member['passport_photo']); ?>"
                      class="member-photo member-photo-lg me-sm-3 mb-2 mb-sm-0" alt="Profile">
             <?php endif; ?>
             <div>
                 <h2 class="mb-0">Welcome, <?php echo htmlspecialchars($member['full_name']); ?></h2>
-                <p class="text-muted mb-0">Member ID: <?php echo $member['member_id']; ?></p>
+                <p class="text-muted mb-0">Member ID: <?php echo htmlspecialchars($member['member_id']); ?></p>
                 <?php if ($yearly_total >= $annual_target): ?>
                     <span class="badge bg-success mt-1">✅ Annual Target Reached</span>
                 <?php else: ?>
@@ -203,23 +205,23 @@ $paid_months = $months_stmt->fetchAll(PDO::FETCH_COLUMN);
                                                 ($transaction['payment_method'] == 'Mobile Money' ? 'warning' : 
                                                 ($transaction['payment_method'] == 'Bank Transfer' ? 'info' : 'primary')); 
                                         ?>">
-                                            <?php echo $transaction['payment_method']; ?>
+                                             <?php echo htmlspecialchars($transaction['payment_method']); ?>
                                         </span>
                                     </td>
                                     <td>
                                         <?php 
                                         if ($transaction['billing_cycle_month']) {
-                                            echo date('M Y', mktime(0, 0, 0, $transaction['billing_cycle_month'], 1, $transaction['billing_cycle_year']));
+                                            echo formatBillingPeriod($transaction['billing_cycle_month'], $transaction['billing_cycle_year']);
                                         } else {
-                                            echo $transaction['billing_cycle_year'];
+                                            echo htmlspecialchars($transaction['billing_cycle_year']);
                                         }
                                         ?>
                                     </td>
-                                    <td><?php echo date('M d, Y', strtotime($transaction['transaction_date'])); ?></td>
+                                    <td><?php echo !empty($transaction['transaction_date']) ? htmlspecialchars(date('M d, Y', strtotime($transaction['transaction_date']))) : 'N/A'; ?></td>
                                     <td>
                                         <button class="btn btn-sm btn-info" 
-                                                onclick="viewReceipt('<?php echo htmlspecialchars($transaction['receipt_no'], ENT_QUOTES, 'UTF-8'); ?>')">
-                                            👁️ View
+                                                data-receipt-no="<?php echo htmlspecialchars($transaction['receipt_no']); ?>">
+                                            View
                                         </button>
                                     </td>
                                 </tr>
@@ -250,14 +252,27 @@ $paid_months = $months_stmt->fetchAll(PDO::FETCH_COLUMN);
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" onclick="printReceipt()">Print Receipt</button>
+                <button type="button" class="btn btn-primary" id="printReceiptBtn">Print Receipt</button>
             </div>
         </div>
     </div>
 </div>
 
-<script>
+<script nonce="<?php echo CSP_NONCE; ?>">
 let currentReceiptNo = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[data-receipt-no]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            viewReceipt(this.dataset.receiptNo);
+        });
+    });
+    
+    const printBtn = document.getElementById('printReceiptBtn');
+    if (printBtn) {
+        printBtn.addEventListener('click', printReceipt);
+    }
+});
 
 function viewReceipt(receiptNo) {
     currentReceiptNo = receiptNo;
@@ -268,7 +283,7 @@ function viewReceipt(receiptNo) {
     receiptModal.show();
     
     // Fetch receipt content
-    fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${receiptNo}`)
+    fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(receiptNo)}`)
         .then(response => response.text())
         .then(html => {
             document.getElementById('receiptContent').innerHTML = html;
@@ -281,7 +296,7 @@ function viewReceipt(receiptNo) {
 function printReceipt() {
     if (!currentReceiptNo) return;
     const printWindow = window.open(
-        `<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${currentReceiptNo}`,
+        `<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(currentReceiptNo)}`,
         'PrintReceipt',
         'width=800,height=600'
     );

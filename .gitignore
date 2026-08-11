@@ -10,7 +10,15 @@ android/
 Thumbs.db
 *.log
 
+# Kilo agent working directory (local only)
+.kilo/
+
 # PHP / env
+# NOTE: config/database.php is intentionally COMMITTED — it contains no secrets,
+# only the env-var loader + Database class. Vercel needs it to run.
+.env
+.env.local
+.env.*.local
 .phpintel/
 .vscode/
 .idea/
@@ -27,4 +35,3 @@ uploads/*.crdownload
 
 # Local audit reports and temp files
 New Folder/
-*.crdownload

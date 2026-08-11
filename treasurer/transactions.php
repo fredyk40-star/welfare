@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../includes/header.php';
 
 // Check if user is treasurer
@@ -18,96 +18,116 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         $error = 'Invalid request. Please try again.';
     } else {
-        $member_id = sanitizeInput($_POST['member_id']);
-        $amount = sanitizeInput($_POST['amount']);
-        $payment_method = sanitizeInput($_POST['payment_method']);
-        $billing_month = sanitizeInput($_POST['billing_month']);
-        $billing_year = sanitizeInput($_POST['billing_year']);
+        $member_id = cleanInput($_POST['member_id']);
+        $amount_raw = $_POST['amount'] ?? '';
+        $payment_method = cleanInput($_POST['payment_method']);
+        $billing_month = (int) ($_POST['billing_month'] ?? 0);
+        $billing_year = (int) ($_POST['billing_year'] ?? 0);
+        $transaction_date = cleanInput($_POST['transaction_date'] ?? date('Y-m-d'));
+        $transaction_time = cleanInput($_POST['transaction_time'] ?? date('H:i'));
+        $amount = (float) $amount_raw;
         
         // Validate inputs
-        if (empty($member_id) || empty($amount) || empty($payment_method) || empty($billing_month) || empty($billing_year)) {
+        if (empty($member_id) || empty($amount_raw) || empty($payment_method) || !$billing_month || !$billing_year) {
             $error = 'Please fill in all fields.';
-        } elseif (!is_numeric($amount) || $amount <= 0) {
+        } elseif (!is_numeric($amount_raw) || $amount <= 0) {
             $error = 'Invalid amount.';
+        } elseif (empty($transaction_date) || empty($transaction_time)) {
+            $error = 'Please provide transaction date and time.';
         } else {
-            // Check if member exists
-            $member_query = "SELECT * FROM members WHERE member_id = :member_id";
-            $member_stmt = $db->prepare($member_query);
-            $member_stmt->execute([':member_id' => $member_id]);
-            $member = $member_stmt->fetch();
+            // Combine date and time into timestamp
+            $transaction_datetime = $transaction_date . ' ' . $transaction_time . ':00';
             
-            if (!$member) {
-                $error = 'Member not found.';
+            // Validate datetime
+            $dt = DateTime::createFromFormat('Y-m-d H:i:s', $transaction_datetime);
+            if (!$dt) {
+                $error = 'Invalid date or time format.';
             } else {
-                // Check annual limit
-                $yearly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-                               WHERE member_id = :member_id AND billing_cycle_year = :year";
-                $yearly_stmt = $db->prepare($yearly_query);
-                $yearly_stmt->execute([':member_id' => $member_id, ':year' => $billing_year]);
-                $yearly_total = $yearly_stmt->fetch()['total'];
+                // Check if member exists
+                $member_query = "SELECT * FROM members WHERE member_id = :member_id";
+                $member_stmt = $db->prepare($member_query);
+                $member_stmt->execute([':member_id' => $member_id]);
+                $member = $member_stmt->fetch();
                 
-                $settings_query = "SELECT annual_amount FROM settings WHERE id = 1";
-                $settings = $db->query($settings_query)->fetch();
-                $annual_limit = $settings ? $settings['annual_amount'] : 0;
-                
-                if (($yearly_total + $amount) > $annual_limit) {
-                    $error = "Annual limit of GH₵ {$annual_limit} would be exceeded. Current total: GH₵ {$yearly_total}";
+                if (!$member) {
+                    $error = 'Member not found.';
                 } else {
-                    // Generate receipt number
-                    $receipt_no = generateReceiptNumber();
+                    // Check annual limit (exclude voided transactions)
+                    $settings = getWelfareSettings($db);
+                    $annual_limit = $settings['annual_amount'];
+                    $yearly_total = 0;
+                    if ($annual_limit > 0) {
+                        $yearly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
+                                       WHERE member_id = :member_id AND billing_cycle_year = :year AND status != 'void'";
+                        $yearly_stmt = $db->prepare($yearly_query);
+                        $yearly_stmt->execute([':member_id' => $member_id, ':year' => $billing_year]);
+                        $yearly_total = $yearly_stmt->fetch()['total'];
+                    }
                     
-                    // Insert transaction
-                    $query = "INSERT INTO transactions (receipt_no, member_id, treasurer_id, amount, 
-                             payment_method, billing_cycle_month, billing_cycle_year) 
-                             VALUES (:receipt_no, :member_id, :treasurer_id, :amount, 
-                             :payment_method, :billing_month, :billing_year)";
-                    
-                    $stmt = $db->prepare($query);
-                    
-                    try {
-                        $stmt->execute([
-                            ':receipt_no' => $receipt_no,
-                            ':member_id' => $member_id,
-                            ':treasurer_id' => $_SESSION['user_id'],
-                            ':amount' => $amount,
-                            ':payment_method' => $payment_method,
-                            ':billing_month' => $billing_month,
-                            ':billing_year' => $billing_year
-                        ]);
+                    if ($annual_limit > 0 && ($yearly_total + $amount) > $annual_limit) {
+                        $error = "Annual limit of GH₵ {$annual_limit} would be exceeded. Current total: GH₵ {$yearly_total}";
+                    } else {
+                        // Generate receipt number
+                        $receipt_no = generateReceiptNumber();
                         
-                        logAudit($_SESSION['user_id'], "Recorded payment of GH₵ {$amount} for member {$member_id}");
-                        $success = "Payment recorded successfully! Receipt No: {$receipt_no}";
+                        // Insert transaction with exact datetime
+                        $query = "INSERT INTO transactions (receipt_no, member_id, treasurer_id, amount, 
+                                 payment_method, billing_cycle_month, billing_cycle_year, notes, transaction_date) 
+                                 VALUES (:receipt_no, :member_id, :treasurer_id, :amount, 
+                                 :payment_method, :billing_month, :billing_year, :notes, :transaction_date)";
                         
-                        // Store receipt for display
-                        $_SESSION['last_receipt'] = [
-                            'receipt_no' => $receipt_no,
-                            'member_name' => $member['full_name'],
-                            'member_id' => $member_id,
-                            'amount' => $amount,
-                            'payment_method' => $payment_method,
-                            'billing_period' => date('F Y', mktime(0, 0, 0, $billing_month, 1, $billing_year)),
-                            'date' => date('Y-m-d H:i:s')
-                        ];
+                        $stmt = $db->prepare($query);
                         
-                        // Send receipt email to member
-                        $receipt_data = [
-                            'receipt_no' => $receipt_no,
-                            'member_name' => $member['full_name'],
-                            'member_id' => $member_id,
-                            'amount' => $amount,
-                            'payment_method' => $payment_method,
-                            'billing_period' => date('F Y', mktime(0, 0, 0, $billing_month, 1, $billing_year)),
-                            'date' => date('Y-m-d H:i:s')
-                        ];
-                        
-                        sendReceiptEmail($member['email'], $receipt_data, $member['passport_photo']);
-                        
-                    } catch (PDOException $e) {
-                        if (strpos($e->getMessage(), 'unique_member_billing') !== false) {
-                            $error = 'Payment already recorded for this billing cycle.';
-                        } else {
-                            $error = 'Transaction failed. Please try again.';
-                            error_log("Transaction Error: " . $e->getMessage());
+                        try {
+                            $stmt->execute([
+                                ':receipt_no' => $receipt_no,
+                                ':member_id' => $member_id,
+                                ':treasurer_id' => $_SESSION['user_id'],
+                                ':amount' => $amount,
+                                ':payment_method' => $payment_method,
+                                ':billing_month' => $billing_month,
+                                ':billing_year' => $billing_year,
+                                ':notes' => cleanInput($_POST['notes'] ?? ''),
+                                ':transaction_date' => $transaction_datetime
+                            ]);
+                            
+                             logAudit($_SESSION['user_id'], "Recorded payment of GH₵ {$amount} for member {$member_id} on {$transaction_datetime}");
+                            $success = "Payment recorded successfully! Receipt No: {$receipt_no}";
+                            
+                            // Store receipt for display
+                            $_SESSION['last_receipt'] = [
+                                'receipt_no' => $receipt_no,
+                                'member_name' => $member['full_name'],
+                                'member_id' => $member_id,
+                                'amount' => $amount,
+                                'payment_method' => $payment_method,
+                                'billing_period' => date('F Y', mktime(0, 0, 0, $billing_month, 1, $billing_year)),
+                                'date' => $transaction_datetime
+                            ];
+                        } catch (PDOException $e) {
+                            if (strpos($e->getMessage(), 'unique_member_billing') !== false) {
+                                $error = 'Payment already recorded for this billing cycle.';
+                            } else {
+                                $error = 'Transaction failed. Please try again.';
+                                error_log("Transaction Error: " . $e->getMessage());
+                            }
+                        }
+                    }
+                    // Send receipt email outside try-catch so email failure doesn't roll back the payment
+                    if ($success) {
+                        try {
+                            $receipt_data = [
+                                'receipt_no' => $receipt_no,
+                                'member_name' => $member['full_name'],
+                                'member_id' => $member_id,
+                                'amount' => $amount,
+                                'payment_method' => $payment_method,
+                                'billing_period' => date('F Y', mktime(0, 0, 0, $billing_month, 1, $billing_year)),
+                                'date' => $transaction_datetime
+                            ];
+                            sendReceiptEmail($member['email'], $receipt_data, $member['passport_photo']);
+                        } catch (Exception $e) {
+                            error_log("Receipt Email Error: " . $e->getMessage());
                         }
                     }
                 }
@@ -120,60 +140,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // Search members for transaction
 $search_results = [];
 if (isset($_GET['search'])) {
-    $search_term = sanitizeInput($_GET['search']);
+    $search_term = cleanInput($_GET['search']);
     $search_query = "SELECT member_id, full_name, passport_photo, phone 
                     FROM members 
                     WHERE (member_id LIKE :search1 OR full_name LIKE :search2 OR phone LIKE :search3)
-                    AND member_id != 'GYF-ADMIN'";
+                    AND member_id != :treasurer_id";
     $search_stmt = $db->prepare($search_query);
     $search_param = "%{$search_term}%";
     $search_stmt->execute([
         ':search1' => $search_param,
         ':search2' => $search_param,
-        ':search3' => $search_param
+        ':search3' => $search_param,
+        ':treasurer_id' => TREASURER_MEMBER_ID
     ]);
     $search_results = $search_stmt->fetchAll();
 }
 
 // Get transaction history with filters
-$where_clause = "WHERE 1=1";
-$params = [];
-
-if (isset($_GET['filter_member']) && !empty($_GET['filter_member'])) {
-    $where_clause .= " AND t.member_id = :filter_member";
-    $params[':filter_member'] = sanitizeInput($_GET['filter_member']);
+$filter = buildTransactionFilterClause();
+$where_clause = $filter['where'];
+$params = $filter['params'];
+$allowedSort = ['t.transaction_date DESC','t.transaction_date ASC','t.amount DESC','t.amount ASC','t.receipt_no ASC','m.full_name ASC','t.payment_method ASC'];
+$sort = 't.transaction_date DESC';
+if (isset($_GET['sort']) && !empty($_GET['sort'])) {
+    $rawSort = cleanInput($_GET['sort']);
+    if (in_array($rawSort, $allowedSort)) { $sort = $rawSort; }
 }
 
-if (isset($_GET['filter_date']) && !empty($_GET['filter_date'])) {
-    $where_clause .= " AND DATE(t.transaction_date) = :filter_date";
-    $params[':filter_date'] = sanitizeInput($_GET['filter_date']);
-}
+$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+$perPage = 25;
+$offset = ($page - 1) * $perPage;
 
-if (isset($_GET['filter_method']) && !empty($_GET['filter_method'])) {
-    $where_clause .= " AND t.payment_method = :filter_method";
-    $params[':filter_method'] = sanitizeInput($_GET['filter_method']);
-}
+// Count total for pagination
+$countQuery = "SELECT COUNT(*) as total FROM transactions t JOIN members m ON t.member_id = m.member_id {$where_clause}";
+$countStmt = $db->prepare($countQuery);
+$countStmt->execute($params);
+$totalRows = (int)$countStmt->fetch()['total'];
+$totalPages = max(1, (int)ceil($totalRows / $perPage));
+if ($page > $totalPages) { $page = $totalPages; $offset = ($page - 1) * $perPage; }
 
-if (isset($_GET['filter_month']) && !empty($_GET['filter_month'])) {
-    $where_clause .= " AND t.billing_cycle_month = :filter_month";
-    $params[':filter_month'] = (int) date('m');
-}
+// Stats for the filtered set (before LIMIT)
+$statsQuery = "SELECT COUNT(*) as cnt, COALESCE(SUM(amount),0) as total FROM transactions t {$where_clause}";
+$statsStmt = $db->prepare($statsQuery);
+$statsStmt->execute($params);
+$stats = $statsStmt->fetch();
+$displayedCount = (int)$stats['cnt'];
+$displayedTotal = (float)$stats['total'];
 
-if (isset($_GET['filter_year']) && !empty($_GET['filter_year'])) {
-    $where_clause .= " AND t.billing_cycle_year = :filter_year";
-    $params[':filter_year'] = (int) date('Y');
-}
-
-$transactions_query = "SELECT t.*, m.full_name, m.passport_photo 
-                      FROM transactions t 
-                      JOIN members m ON t.member_id = m.member_id 
-                      {$where_clause} 
-                      ORDER BY t.transaction_date DESC 
-                      LIMIT 50";
+$transactions_query = "SELECT t.*, m.full_name, m.passport_photo
+                      FROM transactions t
+                      JOIN members m ON t.member_id = m.member_id
+                      {$where_clause}
+                      ORDER BY {$sort}
+                      LIMIT :limit OFFSET :offset";
 
 $transactions_stmt = $db->prepare($transactions_query);
-$transactions_stmt->execute($params);
+foreach ($params as $k => $v) { $transactions_stmt->bindValue($k, $v); }
+$transactions_stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+$transactions_stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+$transactions_stmt->execute();
 $transactions = $transactions_stmt->fetchAll();
+
+$currentSort = $_GET['sort'] ?? 't.transaction_date DESC';
+$sortParts = explode(' ', $currentSort, 2);
+$sortField = $sortParts[0];
+$sortDir = isset($sortParts[1]) ? strtoupper($sortParts[1]) : 'DESC';
+function buildSortUrl($field, $currentField, $currentDir) {
+    $p = $_GET;
+    $nextDir = ($field === $currentField && $currentDir === 'ASC') ? 'DESC' : 'ASC';
+    $p['sort'] = $field . ' ' . $nextDir;
+    $p['page'] = 1;
+    return '?' . http_build_query($p);
+}
+function sortIcon($field, $currentField, $currentDir) {
+    if ($field === $currentField) {
+        return $currentDir === 'ASC' ? ' &uarr;' : ' &darr;';
+    }
+    return '';
+}
 ?>
 
 <div class="row">
@@ -182,11 +226,31 @@ $transactions = $transactions_stmt->fetchAll();
     </div>
 </div>
 
+<div class="row mb-3" id="statsBar">
+    <div class="col-md-4">
+        <div class="card border-0 bg-transparent"><div class="card-body py-2">
+            <small class="text-muted">Showing</small> <strong><?php echo $displayedCount; ?></strong> <small class="text-muted">of <?php echo $totalRows; ?> transactions</small>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 bg-transparent"><div class="card-body py-2">
+            <small class="text-muted">Total:</small> <strong class="text-success">GH₵ <?php echo number_format($displayedTotal, 2); ?></strong>
+        </div></div>
+    </div>
+    <div class="col-md-4 text-end">
+        <div class="card border-0 bg-transparent"><div class="card-body py-2">
+            <?php if ($totalPages > 1): ?>
+                <small class="text-muted">Page <?php echo $page; ?> of <?php echo $totalPages; ?></small>
+            <?php endif; ?>
+        </div></div>
+    </div>
+</div>
+
 <?php if ($success): ?>
     <div class="alert alert-success alert-dismissible fade show" role="alert">
         <?php echo $success; ?>
         <?php if (isset($_SESSION['last_receipt'])): ?>
-            <button class="btn btn-sm btn-success ms-3" onclick="window.print()">
+            <button class="btn btn-sm btn-success ms-3" id="printReceiptBtn">
                 🖨️ Print Receipt
             </button>
         <?php endif; ?>
@@ -199,14 +263,15 @@ $transactions = $transactions_stmt->fetchAll();
                 <h4>GYF Welfare Management System</h4>
                 <h5>Payment Receipt</h5>
             </div>
+            <div class="table-responsive">
             <table class="table table-bordered">
                 <tr>
                     <td><strong>Receipt No:</strong></td>
-                    <td><?php echo $_SESSION['last_receipt']['receipt_no']; ?></td>
+                    <td><?php echo htmlspecialchars($_SESSION['last_receipt']['receipt_no']); ?></td>
                 </tr>
                 <tr>
                     <td><strong>Member:</strong></td>
-                    <td><?php echo $_SESSION['last_receipt']['member_name']; ?> (<?php echo $_SESSION['last_receipt']['member_id']; ?>)</td>
+                    <td><?php echo htmlspecialchars($_SESSION['last_receipt']['member_name']); ?> (<?php echo htmlspecialchars($_SESSION['last_receipt']['member_id']); ?>)</td>
                 </tr>
                 <tr>
                     <td><strong>Amount:</strong></td>
@@ -214,17 +279,18 @@ $transactions = $transactions_stmt->fetchAll();
                 </tr>
                 <tr>
                     <td><strong>Payment Method:</strong></td>
-                    <td><?php echo $_SESSION['last_receipt']['payment_method']; ?></td>
+                    <td><?php echo htmlspecialchars($_SESSION['last_receipt']['payment_method']); ?></td>
                 </tr>
                 <tr>
                     <td><strong>Billing Period:</strong></td>
-                    <td><?php echo $_SESSION['last_receipt']['billing_period']; ?></td>
+                    <td><?php echo htmlspecialchars($_SESSION['last_receipt']['billing_period']); ?></td>
                 </tr>
                 <tr>
                     <td><strong>Date:</strong></td>
-                    <td><?php echo date('F j, Y g:i A', strtotime($_SESSION['last_receipt']['date'])); ?></td>
+                    <td><?php echo htmlspecialchars(date('F j, Y g:i A', strtotime($_SESSION['last_receipt']['date']))); ?></td>
                 </tr>
             </table>
+            </div>
             <div class="text-center mt-3">
                 <small>This is a computer-generated receipt</small>
             </div>
@@ -243,11 +309,36 @@ $transactions = $transactions_stmt->fetchAll();
 <!-- Record Payment Button -->
 <div class="row mb-4">
     <div class="col-12">
-        <button class="btn btn-primary btn-lg" type="button" onclick="openPaymentModal()">
-            ➕ Record New Payment
-        </button>
-        <a href="<?php echo APP_URL; ?>/api/transactions.php?action=export_csv" class="btn btn-success btn-lg ms-2">📊 Export to CSV</a>
-        <a href="<?php echo APP_URL; ?>/api/transactions.php?action=export_pdf" class="btn btn-danger btn-lg ms-2">📄 Export to PDF</a>
+        <div class="d-grid gap-2 d-md-flex align-items-center flex-wrap">
+            <button class="btn btn-primary btn-lg" type="button" id="openPaymentModalBtn">
+                ➕ Record New Payment
+            </button>
+            <button class="btn btn-info btn-lg text-white" type="button" id="openBrowseMembersBtn">
+                👥 Browse Members
+            </button>
+            <button class="btn btn-outline-warning btn-lg" type="button" id="openBatchModalBtn">
+                📦 Batch Record
+            </button>
+            <?php if (isset($_SESSION['last_receipt'])): ?>
+                <button class="btn btn-outline-danger btn-lg" type="button" id="undoLastTransactionBtn">
+                ↩️ Undo Last
+                </button>
+            <?php endif; ?>
+            <form method="POST" action="<?php echo APP_URL; ?>/api/transactions.php?action=export_csv" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                <?php foreach (array_filter($_GET, function($k){return $k!=="action"&&$k!=="export";}, ARRAY_FILTER_USE_KEY) as $k => $v): ?>
+                <input type="hidden" name="<?php echo htmlspecialchars($k); ?>" value="<?php echo htmlspecialchars($v); ?>">
+                <?php endforeach; ?>
+                <button type="submit" class="btn btn-success btn-lg">📊 Export CSV</button>
+            </form>
+            <form method="POST" action="<?php echo APP_URL; ?>/api/transactions.php?action=export_pdf" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                <?php foreach (array_filter($_GET, function($k){return $k!=="action"&&$k!=="export";}, ARRAY_FILTER_USE_KEY) as $k => $v): ?>
+                <input type="hidden" name="<?php echo htmlspecialchars($k); ?>" value="<?php echo htmlspecialchars($v); ?>">
+                <?php endforeach; ?>
+                <button type="submit" class="btn btn-danger btn-lg">📄 Export PDF</button>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -266,10 +357,25 @@ $transactions = $transactions_stmt->fetchAll();
                     <div class="input-group">
                         <input type="text" class="form-control" id="memberSearch" 
                                placeholder="Search by name, member ID, or phone...">
-                        <button class="btn btn-primary" type="button" onclick="searchMembers()">Search</button>
+                        <button class="btn btn-primary" type="button" id="searchMembersBtn">Search</button>
                     </div>
                     <div id="searchResults" class="mt-2"></div>
                 </div>
+                 <!-- Selected Member Display -->
+                <div id="selectedMemberInfo" class="alert alert-success py-2 mb-3" style="display:none;">
+                    <div class="d-flex align-items-center">
+                        <img id="selectedMemberPhoto" src="" alt="" class="member-photo me-2" style="width:40px;height:40px;object-fit:cover;border-radius:50%;display:none;">
+                        <div class="flex-grow-1">
+                            <strong id="selectedMemberNameDisplay">No member selected</strong>
+                            <div class="small text-muted">
+                                <span id="selectedMemberIdDisplay"></span> | 
+                                <span id="selectedMemberContactDisplay"></span>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-danger" id="clearMemberBtn">Change</button>
+                    </div>
+                </div>
+
                 
                  <!-- Payment Form -->
                 <form method="POST" action="" id="paymentForm">
@@ -318,7 +424,27 @@ $transactions = $transactions_stmt->fetchAll();
                             </select>
                         </div>
                     </div>
-                    
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="transaction_date" class="form-label">Transaction Date *</label>
+                            <input type="date" class="form-control" id="transaction_date" name="transaction_date" 
+                                   value="<?php echo date('Y-m-d'); ?>" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="transaction_time" class="form-label">Transaction Time *</label>
+                            <input type="time" class="form-control" id="transaction_time" name="transaction_time" 
+                                   value="<?php echo date('H:i'); ?>" required>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label for="notes" class="form-label">Notes (optional)</label>
+                            <textarea class="form-control" id="notes" name="notes" rows="2" placeholder="Any remarks about this payment..."></textarea>
+                        </div>
+                    </div>
+
                     <div class="alert alert-info">
                         <div><strong>Selected Member:</strong> <span class="selected-dot" id="selectedDot"></span><span id="selectedMemberName">None</span></div>
                         <div id="memberProgress" class="mt-2" style="display:none;">
@@ -340,6 +466,153 @@ $transactions = $transactions_stmt->fetchAll();
     </div>
 </div>
 
+<!-- Batch Payment Modal -->
+<div class="modal fade" id="batchModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Batch Record Payment</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="batchPaymentForm">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Amount (GH₵) *</label>
+                            <input type="number" class="form-control" id="batchAmount" step="0.01" min="0.01" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Payment Method *</label>
+                            <select class="form-control" id="batchMethod" required>
+                                <option value="">Select Method</option>
+                                <option value="Cash">Cash</option>
+                                <option value="Mobile Money">Mobile Money</option>
+                                <option value="Bank Transfer">Bank Transfer</option>
+                                <option value="Card">Card</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Billing Month *</label>
+                            <select class="form-control" id="batchMonth" required>
+                                <option value="">Select Month</option>
+                                <?php for ($m = 1; $m <= 12; $m++): ?>
+                                    <option value="<?php echo $m; ?>" <?php echo $m == date('m') ? 'selected' : ''; ?>>
+                                        <?php echo date('F', mktime(0, 0, 0, $m, 1)); ?>
+                                    </option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Billing Year *</label>
+                            <select class="form-control" id="batchYear" required>
+                                <?php for ($y = date('Y') - 1; $y <= date('Y') + 1; $y++): ?>
+                                    <option value="<?php echo $y; ?>" <?php echo $y == date('Y') ? 'selected' : ''; ?>>
+                                        <?php echo $y; ?>
+                                    </option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Transaction Date *</label>
+                            <input type="date" class="form-control" id="batchDate" value="<?php echo date('Y-m-d'); ?>" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Transaction Time *</label>
+                            <input type="time" class="form-control" id="batchTime" value="<?php echo date('H:i'); ?>" required>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Member IDs (comma-separated) *</label>
+                            <textarea class="form-control" id="batchMemberIds" rows="2" placeholder="GYF-001, GYF-002, GYF-003" required></textarea>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes (optional)</label>
+                        <textarea class="form-control" id="batchNotes" rows="2" placeholder="Batch payment notes..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Record Batch Payment</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Browse Members Modal -->
+<div class="modal fade" id="browseMembersModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">Browse Members</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="browseMemberSearch"
+                               placeholder="Search by name, member ID, or phone...">
+                        <button class="btn btn-primary" type="button" id="browseMemberSearchBtn">Search</button>
+                    </div>
+                    <div class="form-text">Tap a member to open the payment form for them.</div>
+                </div>
+                <div id="browseMembersLoading" class="text-center py-4" style="display:none;">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+                <div class="row g-3" id="browseMembersGrid"></div>
+                <div id="browseMembersEmpty" class="alert alert-warning" style="display:none;">No members found.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Undo Last Transaction Modal -->
+<div class="modal fade" id="undoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">Undo Last Transaction</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to undo the last transaction? This cannot be undone.</p>
+                <div class="mb-3">
+                    <label class="form-label">Reason for undo *</label>
+                    <textarea class="form-control" id="undoReason" rows="3" required placeholder="Enter reason..."></textarea>
+                </div>
+                <input type="hidden" id="undoTransactionId" value="">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="confirmUndoBtn">Yes, Undo</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recurring Late Payers Alert -->
+<?php
+$late_payers = [];
+try {
+    $late_payers = getRecurringLatePayers($db);
+} catch (Exception $e) {}
+if (!empty($late_payers)):
+?>
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="alert alert-warning">
+            <strong>⚠️ Recurring Late Payers (Last Month):</strong>
+            <ul class="mb-0 mt-2">
+                <?php foreach ($late_payers as $lp): ?>
+                    <li><?php echo htmlspecialchars($lp['full_name']); ?> (<?php echo htmlspecialchars($lp['member_id']); ?>) - <?php echo $lp['late_count']; ?> late payment(s)</li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- Transaction History -->
 <div class="row">
     <div class="col-12">
@@ -349,25 +622,42 @@ $transactions = $transactions_stmt->fetchAll();
             </div>
             <div class="card-body">
                 <!-- Filters -->
-                <form method="GET" action="" class="row mb-3">
-                    <div class="col-md-4 mb-2">
-                        <input type="text" class="form-control" name="filter_member" 
-                               placeholder="Filter by Member ID">
+                <form method="GET" action="" class="row g-2" id="filterForm">
+                    <div class="col-md-2">
+                        <input type="text" class="form-control" name="filter_receipt" placeholder="Receipt #" value="<?php echo htmlspecialchars($_GET['filter_receipt'] ?? ''); ?>">
                     </div>
-                    <div class="col-md-3 mb-2">
-                        <input type="date" class="form-control" name="filter_date">
+                    <div class="col-md-2">
+                        <input type="text" class="form-control" name="filter_member" placeholder="Member ID" value="<?php echo htmlspecialchars($_GET['filter_member'] ?? ''); ?>">
                     </div>
-                    <div class="col-md-3 mb-2">
+                    <div class="col-md-2">
+                        <input type="date" class="form-control" name="filter_date_from" placeholder="From" value="<?php echo htmlspecialchars($_GET['filter_date_from'] ?? ''); ?>">
+                    </div>
+                    <div class="col-md-2">
+                        <input type="date" class="form-control" name="filter_date_to" placeholder="To" value="<?php echo htmlspecialchars($_GET['filter_date_to'] ?? ''); ?>">
+                    </div>
+                    <div class="col-md-1">
+                        <input type="number" step="0.01" class="form-control" name="filter_amount_min" placeholder="Min" value="<?php echo htmlspecialchars($_GET['filter_amount_min'] ?? ''); ?>">
+                    </div>
+                    <div class="col-md-1">
+                        <input type="number" step="0.01" class="form-control" name="filter_amount_max" placeholder="Max" value="<?php echo htmlspecialchars($_GET['filter_amount_max'] ?? ''); ?>">
+                    </div>
+                    <div class="col-md-2">
                         <select class="form-control" name="filter_method">
                             <option value="">All Methods</option>
-                            <option value="Cash">Cash</option>
-                            <option value="Mobile Money">Mobile Money</option>
-                            <option value="Bank Transfer">Bank Transfer</option>
-                            <option value="Card">Card</option>
+                            <option value="Cash" <?php echo ($_GET['filter_method'] ?? '') === 'Cash' ? 'selected' : ''; ?>>Cash</option>
+                            <option value="Mobile Money" <?php echo ($_GET['filter_method'] ?? '') === 'Mobile Money' ? 'selected' : ''; ?>>Mobile Money</option>
+                            <option value="Bank Transfer" <?php echo ($_GET['filter_method'] ?? '') === 'Bank Transfer' ? 'selected' : ''; ?>>Bank Transfer</option>
+                            <option value="Card" <?php echo ($_GET['filter_method'] ?? '') === 'Card' ? 'selected' : ''; ?>>Card</option>
                         </select>
                     </div>
-                    <div class="col-md-2 mb-2">
-                        <button type="submit" class="btn btn-primary w-100">Filter</button>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary w-100">🔍 Filter</button>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="<?php echo APP_URL; ?>/treasurer/transactions.php" class="btn btn-outline-secondary w-100">🔄 Reset</a>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="button" class="btn btn-success w-100" id="bulkExportCsv">📊 Export CSV</button>
                     </div>
                 </form>
                 
@@ -375,29 +665,30 @@ $transactions = $transactions_stmt->fetchAll();
                     <table class="table table-hover">
                         <thead>
                             <tr>
-                                <th>Receipt No</th>
-                                <th>Member</th>
-                                <th>Amount</th>
-                                <th>Method</th>
-                                <th>Billing Period</th>
-                                <th>Date</th>
+                                <th><input type="checkbox" id="selectAll" title="Select all"></th>
+                                <th><a href="<?php echo buildSortUrl('t.receipt_no', $sortField, $sortDir); ?>" class="sort-link">Receipt #<?php echo sortIcon('t.receipt_no', $sortField, $sortDir); ?></a></th>
+                                <th><a href="<?php echo buildSortUrl('m.full_name', $sortField, $sortDir); ?>" class="sort-link">Member<?php echo sortIcon('m.full_name', $sortField, $sortDir); ?></a></th>
+                                <th><a href="<?php echo buildSortUrl('t.amount', $sortField, $sortDir); ?>" class="sort-link">Amount<?php echo sortIcon('t.amount', $sortField, $sortDir); ?></a></th>
+                                <th><a href="<?php echo buildSortUrl('t.payment_method', $sortField, $sortDir); ?>" class="sort-link">Method<?php echo sortIcon('t.payment_method', $sortField, $sortDir); ?></a></th>
+                                <th><a href="<?php echo buildSortUrl('t.transaction_date', $sortField, $sortDir); ?>" class="sort-link">Date<?php echo sortIcon('t.transaction_date', $sortField, $sortDir); ?></a></th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php foreach ($transactions as $transaction): ?>
                                 <tr>
+                                    <td><input type="checkbox" class="bulk-check" value="<?php echo (int)$transaction['id']; ?>"></td>
                                     <td><?php echo htmlspecialchars($transaction['receipt_no']); ?></td>
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <?php if ($transaction['passport_photo']): ?>
-                                                <img src="<?php echo APP_URL; ?>/uploads/photos/<?php echo $transaction['passport_photo']; ?>" 
+                                                <img src="<?php echo displayPhotoUrl($transaction['passport_photo']); ?>"
                                                      class="member-photo me-2" alt="Photo">
                                             <?php endif; ?>
                                             <div>
                                                 <strong><?php echo htmlspecialchars($transaction['full_name']); ?></strong>
                                                 <br>
-                                                <small><?php echo $transaction['member_id']; ?></small>
+                                                <small><?php echo htmlspecialchars($transaction['member_id']); ?></small>
                                             </div>
                                         </div>
                                     </td>
@@ -408,42 +699,60 @@ $transactions = $transactions_stmt->fetchAll();
                                                 ($transaction['payment_method'] == 'Mobile Money' ? 'warning' : 
                                                 ($transaction['payment_method'] == 'Bank Transfer' ? 'info' : 'primary')); 
                                         ?>">
-                                            <?php echo $transaction['payment_method']; ?>
+                                            <?php echo htmlspecialchars($transaction['payment_method']); ?>
                                         </span>
                                     </td>
                                     <td>
                                         <?php 
                                         if ($transaction['billing_cycle_month']) {
-                                            echo date('M', mktime(0, 0, 0, $transaction['billing_cycle_month'], 1)) . ' ' . $transaction['billing_cycle_year'];
+                                            echo formatBillingPeriod($transaction['billing_cycle_month'], $transaction['billing_cycle_year']);
                                         } else {
                                             echo $transaction['billing_cycle_year'];
                                         }
                                         ?>
                                     </td>
-                                    <td><?php echo date('M d, Y', strtotime($transaction['transaction_date'])); ?></td>
+                                    <td><?php echo htmlspecialchars($transaction['transaction_date'] ? date('M d, Y', strtotime($transaction['transaction_date'])) : 'N/A'); ?></td>
                                     <td>
-                                        <button class="btn btn-sm btn-info" onclick="viewReceipt(<?php echo (int)$transaction['id']; ?>)">
+                                        <button class="btn btn-sm btn-info" data-transaction-id="<?php echo (int)$transaction['id']; ?>" data-action="view">
                                             👁️ View
                                         </button>
-                                        <button class="btn btn-sm btn-success" onclick="printReceipt(<?php echo (int)$transaction['id']; ?>)">
+                                        <button class="btn btn-sm btn-success" data-transaction-id="<?php echo (int)$transaction['id']; ?>" data-action="print">
                                             🖨️ Print
+                                        </button>
+                                        <button class="btn btn-sm btn-danger" data-transaction-id="<?php echo (int)$transaction['id']; ?>" data-action="void">
+                                            🚫 Void
                                         </button>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
+                    <div class="row mt-3">
+                        <div class="col-12 d-flex justify-content-between align-items-center">
+                            <div>
+                                <?php if ($page > 1): ?>
+                                    <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page - 1])); ?>" class="btn btn-sm btn-outline-primary">&larr; Previous</a>
+                                <?php endif; ?>
+                            </div>
+                            <small class="text-muted">Page <?php echo $page; ?> of <?php echo $totalPages; ?></small>
+                            <div>
+                                <?php if ($page < $totalPages): ?>
+                                    <a href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page + 1])); ?>" class="btn btn-sm btn-outline-primary">Next &rarr;</a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<script>
+<script nonce="<?php echo CSP_NONCE; ?>">
 function searchMembers() {
     const searchTerm = document.getElementById('memberSearch').value;
     if (searchTerm.length < 2) {
-        alert('Please enter at least 2 characters to search');
+        showToast('Please enter at least 2 characters to search', 'warning');
         return;
     }
 
@@ -462,16 +771,18 @@ function searchMembers() {
                 data.members.forEach(member => {
                     const safeName = escapeHtml(member.full_name);
                     const safeId = escapeHtml(member.member_id);
+                    const safeEmail = escapeHtml(member.email || '');
                     const safePhone = escapeHtml(member.phone);
-                    const safePhoto = escapeHtml(member.passport_photo);
+                    const safePhoto = member.passport_photo ? escapeHtml(String(member.passport_photo).replace(/^.*[\\\/]/, '').replace(/[^a-zA-Z0-9_\-.]/g, '')) : '';
+                    const photoUrl = (p) => { if (!p) return ''; p = String(p); return p.indexOf('http') === 0 ? p : '<?php echo APP_URL; ?>/uploads/photos/' + p; };
                     html += `
-                        <div class="card mb-2 member-card" style="cursor: pointer;" 
-                             data-member-id="${safeId}" data-member-name="${safeName}">
+                        <div class="card mb-2 member-card" style="cursor: pointer;"
+                             data-member-id="${safeId}" data-member-name="${safeName}" data-member-email="${safeEmail}" data-member-phone="${safePhone}" data-member-photo="${safePhoto}">
                             <span class="selected-dot"></span>
                             <div class="card-body">
                                 <div class="d-flex align-items-center">
-                                    ${safePhoto ? 
-                                        `<img src="<?php echo APP_URL; ?>/uploads/photos/${safePhoto}" 
+                                    ${safePhoto ?
+                                        `<img src="${photoUrl(safePhoto)}"
                                               class="member-photo me-3">` : ''}
                                     <div>
                                         <strong>${safeName}</strong><br>
@@ -486,8 +797,8 @@ function searchMembers() {
                 html = '<div class="alert alert-warning">No members found</div>';
             }
             document.getElementById('searchResults').innerHTML = html;
-            // Re-mark an already-selected member after a fresh search render
-            const curId = document.getElementById('selectedMemberId').value;
+            const memberIdEl = document.getElementById('selectedMemberId');
+            const curId = memberIdEl ? memberIdEl.value : '';
             if (curId) {
                 const cards = document.querySelectorAll('#searchResults .member-card');
                 cards.forEach(c => {
@@ -502,13 +813,18 @@ function searchMembers() {
         });
 }
 
-function selectMember(memberId, memberName) {
+function selectMember(memberId, memberName, memberEmail, memberPhone, memberPhoto) {
     const idEl = document.getElementById('selectedMemberId');
     const nameEl = document.getElementById('selectedMemberName');
     const resultsEl = document.getElementById('searchResults');
     const searchEl = document.getElementById('memberSearch');
     const submitEl = document.getElementById('submitPayment');
     const dotEl = document.getElementById('selectedDot');
+    const infoEl = document.getElementById('selectedMemberInfo');
+    const infoName = document.getElementById('selectedMemberNameDisplay');
+    const infoId = document.getElementById('selectedMemberIdDisplay');
+    const infoContact = document.getElementById('selectedMemberContactDisplay');
+    const infoPhoto = document.getElementById('selectedMemberPhoto');
     if (!idEl || !nameEl) return;
 
     idEl.value = memberId;
@@ -516,7 +832,20 @@ function selectMember(memberId, memberName) {
     nameEl.classList.add('is-selected');
     if (dotEl) dotEl.style.display = 'inline-block';
 
-    // Visual confirmation: green dot on the chosen card, dim the rest
+    // Show selected member info banner
+    if (infoEl) {
+        infoEl.style.display = 'block';
+        if (infoName) infoName.textContent = memberName;
+        if (infoId) infoId.textContent = memberId;
+        if (infoContact) infoContact.textContent = [memberEmail, memberPhone].filter(Boolean).join(' | ') || 'No contact info';
+        if (infoPhoto && memberPhoto) {
+            infoPhoto.src = memberPhoto;
+            infoPhoto.style.display = 'inline-block';
+        } else if (infoPhoto) {
+            infoPhoto.style.display = 'none';
+        }
+    }
+
     if (resultsEl) {
         const cards = resultsEl.querySelectorAll('.member-card');
         cards.forEach(c => {
@@ -532,60 +861,95 @@ function selectMember(memberId, memberName) {
         });
     }
     if (searchEl) searchEl.value = memberName;
-
-    // Member verified -> enable the record button
-    if (submitEl) {
-        submitEl.disabled = false;
-        validateForm();
-    }
+    if (submitEl) { submitEl.disabled = false; validateForm(); }
 }
 
-// Enable submit only when member selected AND required fields filled
+function clearMemberSelection() {
+    const idEl = document.getElementById('selectedMemberId');
+    const nameEl = document.getElementById('selectedMemberName');
+    const resultsEl = document.getElementById('searchResults');
+    const searchEl = document.getElementById('memberSearch');
+    const submitEl = document.getElementById('submitPayment');
+    const dotEl = document.getElementById('selectedDot');
+    const infoEl = document.getElementById('selectedMemberInfo');
+    const progressEl = document.getElementById('memberProgress');
+    const dupWarningEl = document.getElementById('dupWarning');
+    if (idEl) idEl.value = '';
+    if (nameEl) { nameEl.textContent = 'None'; nameEl.classList.remove('is-selected'); }
+    if (dotEl) dotEl.style.display = 'none';
+    if (infoEl) infoEl.style.display = 'none';
+    if (resultsEl) {
+        const cards = resultsEl.querySelectorAll('.member-card');
+        cards.forEach(c => {
+            c.classList.remove('selected');
+            c.style.pointerEvents = 'auto';
+            c.style.opacity = '1';
+        });
+    }
+    if (searchEl) searchEl.value = '';
+    if (submitEl) submitEl.disabled = true;
+    if (progressEl) progressEl.style.display = 'none';
+    if (dupWarningEl) dupWarningEl.style.display = 'none';
+}
+
 function validateForm() {
     const submitEl = document.getElementById('submitPayment');
     if (!submitEl) return;
-    const memberId = document.getElementById('selectedMemberId').value;
-    const amount = document.getElementById('amount').value;
-    const method = document.getElementById('payment_method').value;
-    const month = document.getElementById('billing_month').value;
-    const year = document.getElementById('billing_year').value;
-    const ready = memberId && amount && method && month && year;
+    
+    const memberIdEl = document.getElementById('selectedMemberId');
+    const amountEl = document.getElementById('amount');
+    const methodEl = document.getElementById('payment_method');
+    const monthEl = document.getElementById('billing_month');
+    const yearEl = document.getElementById('billing_year');
+    const txDateEl = document.getElementById('transaction_date');
+    const txTimeEl = document.getElementById('transaction_time');
+    
+    const memberId = memberIdEl ? memberIdEl.value : '';
+    const amount = amountEl ? amountEl.value : '';
+    const method = methodEl ? methodEl.value : '';
+    const month = monthEl ? monthEl.value : '';
+    const year = yearEl ? yearEl.value : '';
+    const txDate = txDateEl ? txDateEl.value : '';
+    const txTime = txTimeEl ? txTimeEl.value : '';
+    
+    const ready = memberId && amount && method && month && year && txDate && txTime;
     submitEl.disabled = !ready;
 }
 
-// Live validation as the treasurer fills the form
-['amount', 'payment_method', 'billing_month', 'billing_year'].forEach(function (id) {
+['amount', 'payment_method', 'billing_month', 'billing_year', 'transaction_date', 'transaction_time'].forEach(function (id) {
     const el = document.getElementById(id);
     if (el) el.addEventListener('input', validateForm);
 });
 
-// Submit guard: ensure a member is actually selected before posting
-document.getElementById('paymentForm').addEventListener('submit', function (e) {
-    const memberId = document.getElementById('selectedMemberId').value;
+var clearBtn = document.getElementById('clearMemberBtn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', clearMemberSelection);
+    }
+
+    document.getElementById('paymentForm').addEventListener('submit', function (e) {
+    const memberIdEl = document.getElementById('selectedMemberId');
+    const memberId = memberIdEl ? memberIdEl.value : '';
     if (!memberId) {
         e.preventDefault();
-        alert('Please select a member first.');
+        showToast('Please select a member first.', 'danger');
         return;
     }
     validateForm();
     if (document.getElementById('submitPayment').disabled) {
         e.preventDefault();
-        alert('Please fill in all required payment details.');
+        showToast('Please fill in all required payment details.', 'warning');
     }
 });
 
 function viewReceipt(transactionId) {
-    window.open(`<?php echo APP_URL; ?>/api/transactions.php?action=receipt&id=${transactionId}`, 
+    window.open(`<?php echo APP_URL; ?>/api/transactions.php?action=receipt&id=${transactionId}`,
                 'Receipt', 'width=600,height=400');
 }
 
-// Export functions
-<?php if (isset($_GET['export'])): ?>
-    <?php if ($_GET['export'] == 'csv'): ?>
-        // CSV Export logic
-        window.location.href = '<?php echo APP_URL; ?>/api/transactions.php?action=export_csv';
-    <?php endif; ?>
-<?php endif; ?>
+function printReceipt(transactionId) {
+    window.open(`<?php echo APP_URL; ?>/api/transactions.php?action=receipt&id=${transactionId}&print=1`,
+        'Receipt', 'width=600,height=400');
+}
 
 // Pre-select member when redirected from members page with ?member_id=...&member_name=...
 (function() {
@@ -593,7 +957,6 @@ function viewReceipt(transactionId) {
     var memberId = params.get('member_id');
     var memberName = params.get('member_name');
     if (memberId && memberName) {
-        // Wait for modal to be ready after global openPaymentModal fires
         var trySelect = function() {
             var idField = document.getElementById('selectedMemberId');
             var nameField = document.getElementById('selectedMemberName');
@@ -625,7 +988,7 @@ document.addEventListener('click', function (e) {
     selectMember(card.getAttribute('data-member-id'), card.getAttribute('data-member-name'));
 });
 
-// ---- Feature: debounced search-as-you-type ----
+// Debounced search-as-you-type
 let _searchTimer = null;
 document.getElementById('memberSearch').addEventListener('input', function () {
     clearTimeout(_searchTimer);
@@ -634,11 +997,13 @@ document.getElementById('memberSearch').addEventListener('input', function () {
     _searchTimer = setTimeout(searchMembers, 350);
 });
 
-// ---- Feature: member annual progress + duplicate-cycle warning ----
+// Member annual progress + duplicate-cycle warning
 function refreshMemberContext(memberId) {
     if (!memberId) {
-        document.getElementById('memberProgress').style.display = 'none';
-        document.getElementById('dupWarning').style.display = 'none';
+        const progressEl = document.getElementById('memberProgress');
+        const dupWarningEl = document.getElementById('dupWarning');
+        if (progressEl) progressEl.style.display = 'none';
+        if (dupWarningEl) dupWarningEl.style.display = 'none';
         return;
     }
     const month = document.getElementById('billing_month').value;
@@ -680,7 +1045,6 @@ function checkDuplicate(memberId, month, year) {
         .catch(() => { box.style.display = 'none'; });
 }
 
-// Re-check duplicate when billing month/year changes
 ['billing_month', 'billing_year'].forEach(function (id) {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', function () {
@@ -690,56 +1054,291 @@ function checkDuplicate(memberId, month, year) {
     });
 });
 
-// Hook into selectMember: show context after selection
 const _origSelect = selectMember;
 selectMember = function (memberId, memberName) {
     _origSelect(memberId, memberName);
     refreshMemberContext(memberId);
 };
 
-// ---- Feature: quick filter chips ----
-(function () {
-    const chips = document.querySelectorAll('.quick-filter');
-    chips.forEach(function (chip) {
-        chip.addEventListener('click', function () {
-            chips.forEach(c => c.classList.remove('active'));
-            chip.classList.add('active');
-            const f = chip.getAttribute('data-filter');
-            const cur = new URLSearchParams(window.location.search);
-            cur.delete('filter_member'); cur.delete('filter_date'); cur.delete('filter_method');
-            if (f === 'month') { cur.set('filter_month', '1'); }
-            else if (f === 'year') { cur.set('filter_year', '1'); }
-            else if (f !== 'all') { cur.set('filter_method', f); }
-            else { cur.delete('filter_month'); cur.delete('filter_year'); }
-            window.location.search = cur.toString();
-        });
-    });
+// Keyboard shortcut: Ctrl+K to focus search
+document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        const searchInput = document.getElementById('memberSearch');
+        if (searchInput) { searchInput.focus(); searchInput.select(); }
+    }
+});
 
-    const toggle = document.getElementById('advanceToggle');
-    if (toggle) toggle.addEventListener('click', function () {
-        const adv = document.getElementById('advanceFilters');
-        adv.style.display = adv.style.display === 'none' ? 'block' : 'none';
-    });
-    const apply = document.getElementById('applyFilters');
-    if (apply) apply.addEventListener('click', function () {
-        const cur = new URLSearchParams(window.location.search);
-        const m = document.getElementById('filterMember').value;
-        const d = document.getElementById('filterDate').value;
-        const me = document.getElementById('filterMethod').value;
-        if (m) cur.set('filter_member', m); else cur.delete('filter_member');
-        if (d) cur.set('filter_date', d); else cur.delete('filter_date');
-        if (me) cur.set('filter_method', me); else cur.delete('filter_method');
-        cur.delete('filter_month'); cur.delete('filter_year');
-        window.location.search = cur.toString();
-    });
-})();
-
-// ---- Feature: print single receipt from history ----
-function printReceipt(transactionId) {
-    window.open('<?php echo APP_URL; ?>/api/transactions.php?action=receipt&id=' + transactionId + '&print=1',
-        'Receipt', 'width=600,height=400');
+// Transaction details modal
+function showTxDetail(transactionId) {
+    const modalEl = document.getElementById('txDetailModal');
+    const body = document.getElementById('txDetailBody');
+    if (!modalEl || !body) return;
+    body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+    const bsModal = new bootstrap.Modal(modalEl);
+    bsModal.show();
+    fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=details&id=${transactionId}`)
+        .then(r => r.json()).then(d => {
+            if (!d.success) { body.innerHTML = '<div class="alert alert-danger">Failed to load details.</div>'; return; }
+            const t = d.transaction;
+            const esc = (s) => { if (!s && s !== '') return ''; return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c] || c)); };
+            let rows = '<tr><td><strong>Receipt No</strong></td><td>' + esc(t.receipt_no) + '</td></tr>' +
+                '<tr><td><strong>Member</strong></td><td>' + esc(t.full_name) + ' (' + esc(t.member_id) + ')</td></tr>' +
+                '<tr><td><strong>Amount</strong></td><td class="text-success fw-bold">GH₵ ' + parseFloat(t.amount).toFixed(2) + '</td></tr>' +
+                '<tr><td><strong>Method</strong></td><td>' + esc(t.payment_method) + '</td></tr>' +
+                '<tr><td><strong>Billing Period</strong></td><td>' + esc(t.billing_period) + '</td></tr>' +
+                '<tr><td><strong>Date</strong></td><td>' + esc(t.transaction_date) + '</td></tr>' +
+                '<tr><td><strong>Treasurer</strong></td><td>' + esc(t.treasurer_id || 'N/A') + '</td></tr>';
+            if (t.notes) {
+                rows += '<tr><td><strong>Notes</strong></td><td>' + esc(t.notes) + '</td></tr>';
+            }
+            body.innerHTML = '<div class="table-responsive"><table class="table table-bordered">' + rows + '</table></div>' +
+                '<div class="mt-3 text-center">' +
+                '<button class="btn btn-primary me-2" data-transaction-id="' + transactionId + '" data-action="print">🖨️ Print Receipt</button>' +
+                '<button class="btn btn-outline-primary" data-member-id="' + esc(t.member_id) + '" data-action="history">📋 Member History</button>' +
+                '</div>' +
+                '<div id="memberHistoryContainer" class="mt-3" style="display:none;"></div>';
+        }).catch(() => { body.innerHTML = '<div class="alert alert-danger">Failed to load details.</div>'; });
 }
 
+function loadMemberHistory(memberId) {
+    const container = document.getElementById('memberHistoryContainer');
+    if (!container) return;
+    container.style.display = 'block';
+    container.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-primary"></div></div>';
+    fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=member_history&member_id=${memberId}`)
+        .then(r => r.json()).then(d => {
+            if (!d.success || !d.history.length) { container.innerHTML = '<div class="alert alert-info">No payment history found.</div>'; return; }
+            const esc = (s) => { if (!s && s !== '') return ''; return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c] || c)); };
+            let html = '<h6>Payment History for ' + esc(memberId) + '</h6><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Receipt</th><th>Amount</th><th>Method</th><th>Period</th><th>Date</th></tr></thead><tbody>';
+            d.history.forEach(h => {
+                html += '<tr><td>' + esc(h.receipt_no) + '</td><td class="text-success">GH₵ ' + parseFloat(h.amount).toFixed(2) + '</td><td>' + esc(h.payment_method) + '</td><td>' + esc(h.billing_period || 'N/A') + '</td><td>' + esc(h.transaction_date) + '</td></tr>';
+            });
+            html += '</tbody></table></div>';
+            container.innerHTML = html;
+        }).catch(() => { container.innerHTML = '<div class="alert alert-danger">Failed to load history.</div>'; });
+}
+
+// Bulk actions
+document.getElementById('selectAll')?.addEventListener('change', function() {
+    document.querySelectorAll('.bulk-check').forEach(cb => cb.checked = this.checked);
+});
+
+document.getElementById('bulkExportCsv')?.addEventListener('click', function() {
+    const ids = Array.from(document.querySelectorAll('.bulk-check:checked')).map(cb => cb.value);
+    if (!ids.length) { showToast('Please select at least one transaction.', 'warning'); return; }
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '<?php echo APP_URL; ?>/api/transactions.php?action=export_csv';
+    const csrf = document.createElement('input');
+    csrf.type = 'hidden';
+    csrf.name = 'csrf_token';
+    csrf.value = '<?php echo $csrf_token; ?>';
+    form.appendChild(csrf);
+    const idsInput = document.createElement('input');
+    idsInput.type = 'hidden';
+    idsInput.name = 'ids';
+    idsInput.value = ids.join(',');
+    form.appendChild(idsInput);
+    document.body.appendChild(form);
+    form.submit();
+});
+
+// Void transaction
+function voidTransaction(transactionId) {
+    document.getElementById('voidTransactionId').value = transactionId;
+    document.getElementById('voidReason').value = '';
+    new bootstrap.Modal(document.getElementById('voidModal')).show();
+}
+
+function confirmVoid() {
+    const transactionId = document.getElementById('voidTransactionId').value;
+    const reason = document.getElementById('voidReason').value.trim();
+    if (!reason) { showToast('Please enter a reason for voiding.', 'warning'); return; }
+    fetch('<?php echo APP_URL; ?>/api/transactions.php?action=void', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'transaction_id=' + encodeURIComponent(transactionId) + '&reason=' + encodeURIComponent(reason) + '&csrf_token=<?php echo $csrf_token; ?>'
+    })
+    .then(r => r.json()).then(d => {
+        if (d.success) { showToast('Transaction voided successfully.', 'success'); setTimeout(() => location.reload(), 1000); }
+        else { showToast(d.message || 'Failed to void transaction.', 'danger'); }
+    }).catch(() => showToast('Error voiding transaction.', 'danger'));
+}
+
+// Undo last transaction
+function undoLastTransaction() {
+    fetch('<?php echo APP_URL; ?>/api/transactions.php?action=get_last')
+        .then(r => r.json()).then(d => {
+            if (!d.success || !d.transaction) { showToast('No recent transaction found.', 'warning'); return; }
+            document.getElementById('undoTransactionId').value = d.transaction.id;
+            document.getElementById('undoReason').value = '';
+            new bootstrap.Modal(document.getElementById('undoModal')).show();
+        }).catch(() => showToast('Error loading last transaction.', 'danger'));
+}
+
+function confirmUndo() {
+    const transactionId = document.getElementById('undoTransactionId').value;
+    const reason = document.getElementById('undoReason').value.trim();
+    if (!reason) { showToast('Please enter a reason for undo.', 'warning'); return; }
+    fetch('<?php echo APP_URL; ?>/api/transactions.php?action=void', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'transaction_id=' + encodeURIComponent(transactionId) + '&reason=' + encodeURIComponent('UNDO: ' + reason) + '&csrf_token=<?php echo $csrf_token; ?>'
+    })
+    .then(r => r.json()).then(d => {
+        if (d.success) { showToast('Transaction undone successfully.', 'success'); setTimeout(() => location.reload(), 1000); }
+        else { showToast(d.message || 'Failed to undo transaction.', 'danger'); }
+    }).catch(() => showToast('Error undoing transaction.', 'danger'));
+}
+
+// Open payment modal
+function openPaymentModal() {
+    // Reset form
+    const form = document.getElementById('paymentForm');
+    const memberIdEl = document.getElementById('selectedMemberId');
+    const nameEl = document.getElementById('selectedMemberName');
+    const dotEl = document.getElementById('selectedDot');
+    const infoEl = document.getElementById('selectedMemberInfo');
+    const submitEl = document.getElementById('submitPayment');
+    const resultsEl = document.getElementById('searchResults');
+    const progressEl = document.getElementById('memberProgress');
+    const dupWarningEl = document.getElementById('dupWarning');
+    const searchEl = document.getElementById('memberSearch');
+    
+    if (form) form.reset();
+    if (memberIdEl) memberIdEl.value = '';
+    if (nameEl) {
+        nameEl.textContent = 'None';
+        nameEl.classList.remove('is-selected');
+    }
+    if (dotEl) dotEl.style.display = 'none';
+    if (infoEl) infoEl.style.display = 'none';
+    if (submitEl) submitEl.disabled = true;
+    if (resultsEl) resultsEl.innerHTML = '';
+    if (progressEl) progressEl.style.display = 'none';
+    if (dupWarningEl) dupWarningEl.style.display = 'none';
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('paymentModal'));
+    modal.show();
+    
+    // Focus on search input
+    setTimeout(function() {
+        if (searchEl) searchEl.focus();
+    }, 300);
+}
+
+// Batch payment modal
+function openBatchModal() {
+    document.getElementById('batchAmount').value = '';
+    document.getElementById('batchMethod').value = '';
+    document.getElementById('batchMonth').value = '';
+    document.getElementById('batchYear').value = '';
+    document.getElementById('batchMemberIds').value = '';
+    document.getElementById('batchNotes').value = '';
+    new bootstrap.Modal(document.getElementById('batchModal')).show();
+}
+
+// Browse Members modal
+function openBrowseMembers() {
+    const modal = new bootstrap.Modal(document.getElementById('browseMembersModal'));
+    modal.show();
+    loadBrowseMembers('');
+}
+
+function loadBrowseMembers(term) {
+    const grid = document.getElementById('browseMembersGrid');
+    const loading = document.getElementById('browseMembersLoading');
+    const empty = document.getElementById('browseMembersEmpty');
+    if (!grid) return;
+    loading.style.display = 'block';
+    empty.style.display = 'none';
+    grid.innerHTML = '';
+    const url = '<?php echo APP_URL; ?>/api/members.php?action=list' +
+        (term ? '&term=' + encodeURIComponent(term) : '');
+    fetch(url)
+        .then(r => r.json())
+        .then(d => {
+            loading.style.display = 'none';
+            if (!d.success || !d.members.length) {
+                empty.style.display = 'block';
+                return;
+            }
+            const base = '<?php echo APP_URL; ?>/uploads/photos/';
+            const photoUrl = (p) => { if (!p) return ''; p = String(p); return p.indexOf('http') === 0 ? p : base + p; };
+            const esc = (s) => { if (!s && s !== '') return ''; return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c] || c)); };
+            d.members.forEach(m => {
+                const photo = m.passport_photo ? photoUrl(esc(m.passport_photo)) : '';
+                const card = document.createElement('div');
+                card.className = 'col-6 col-sm-4 col-md-3 col-lg-2';
+                card.innerHTML = `
+                    <div class="card h-100 member-browse-card" style="cursor:pointer;" data-member-id="${esc(m.member_id)}" data-member-name="${esc(m.full_name)}">
+                        <div class="card-body text-center p-2">
+                            ${photo
+                                ? `<img src="${photo}" class="member-browse-photo mb-2" alt="Photo" onerror="this.style.display='none'">`
+                                : `<div class="member-browse-photo-placeholder mb-2"><span>${esc(m.full_name).charAt(0).toUpperCase()}</span></div>`}
+                            <div class="fw-bold small text-truncate">${esc(m.full_name)}</div>
+                            <div class="small text-muted text-truncate">${esc(m.member_id)}</div>
+                        </div>
+                    </div>`;
+                grid.appendChild(card);
+            });
+        })
+        .catch(() => {
+            loading.style.display = 'none';
+            empty.style.display = 'block';
+            empty.textContent = 'Failed to load members.';
+        });
+}
+
+function pickBrowseMember(memberId, memberName) {
+    // Close browse modal, then open payment modal prefilled for this member
+    const browseModal = bootstrap.Modal.getInstance(document.getElementById('browseMembersModal'));
+    if (browseModal) browseModal.hide();
+    // Ensure payment modal exists and select the member
+    const pm = document.getElementById('paymentModal');
+    if (pm && typeof selectMember === 'function') {
+        selectMember(memberId, memberName);
+        openPaymentModal();
+    }
+}
+
+document.getElementById('batchPaymentForm')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const memberIdsText = document.getElementById('batchMemberIds').value;
+    const memberIds = memberIdsText.split(',').map(s => s.trim()).filter(s => s.length > 0);
+    if (!memberIds.length) { showToast('Please enter at least one member ID.', 'warning'); return; }
+    const btn = this.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
+    const formData = new FormData();
+    formData.append('action', 'batch_payment');
+    formData.append('csrf_token', '<?php echo $csrf_token; ?>');
+    formData.append('member_ids', JSON.stringify(memberIds));
+    formData.append('amount', document.getElementById('batchAmount').value);
+    formData.append('payment_method', document.getElementById('batchMethod').value);
+    formData.append('billing_month', document.getElementById('batchMonth').value);
+    formData.append('billing_year', document.getElementById('batchYear').value);
+    formData.append('notes', document.getElementById('batchNotes').value);
+    formData.append('transaction_date', document.getElementById('batchDate').value);
+    formData.append('transaction_time', document.getElementById('batchTime').value);
+    fetch('<?php echo APP_URL; ?>/api/transactions.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json()).then(d => {
+        if (d.success) {
+            showToast(d.message + ' (Success: ' + d.success_count + ', Failed: ' + d.fail_count + ')', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('batchModal'))?.hide();
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(d.message || 'Batch payment failed.', 'danger');
+        }
+        btn.disabled = false;
+        btn.textContent = 'Record Batch Payment';
+    }).catch(() => { showToast('Error processing batch payment.', 'danger'); btn.disabled = false; btn.textContent = 'Record Batch Payment'; });
+});
 </script>
 
 <style>
@@ -751,7 +1350,6 @@ function printReceipt(transactionId) {
     border-color: var(--dark-blue);
     background-color: var(--light-blue);
 }
-/* Selected member: green highlight + small green dot */
 .member-card.selected {
     border-color: #28a745 !important;
     background-color: rgba(40, 167, 69, 0.15) !important;
@@ -773,6 +1371,169 @@ function printReceipt(transactionId) {
 #selectedMemberName.is-selected {
     color: #28a745;
 }
+
+/* Sort links */
+.sort-link { color: var(--text-primary); text-decoration: none; }
+.sort-link:hover { color: var(--accent-blue); }
+
+/* Stats bar */
+#statsBar .card { background: transparent; }
+
+/* Toast overrides for glassmorphism */
+.toast { backdrop-filter: blur(10px); background: rgba(0,0,0,0.85) !important; }
+
+/* Bulk check column */
+.bulk-check { cursor: pointer; transform: scale(1.1); }
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .table-responsive { font-size: 0.85rem; }
+    .btn-sm { padding: 0.2rem 0.4rem; font-size: 0.75rem; }
+}
 </style>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<!-- Transaction Details Modal -->
+<div class="modal fade" id="txDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Transaction Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="txDetailBody">
+                <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Void Transaction Modal -->
+<div class="modal fade" id="voidModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">Void Transaction</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to void this transaction? This cannot be undone.</p>
+                <div class="mb-3">
+                    <label class="form-label">Reason for voiding *</label>
+                    <textarea class="form-control" id="voidReason" rows="3" required placeholder="Enter reason..."></textarea>
+                </div>
+                <input type="hidden" id="voidTransactionId" value="">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmVoidBtn">Yes, Void</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>
+
+<script nonce="<?php echo CSP_NONCE; ?>">
+document.addEventListener('DOMContentLoaded', function() {
+    var printBtn = document.getElementById('printReceiptBtn');
+    if (printBtn) { printBtn.addEventListener('click', window.print); }
+    
+    var searchBtn = document.getElementById('searchMembersBtn');
+    if (searchBtn) { searchBtn.addEventListener('click', searchMembers); }
+    
+    var paymentBtn = document.getElementById('openPaymentModalBtn');
+    if (paymentBtn) { paymentBtn.addEventListener('click', openPaymentModal); }
+    
+    var batchBtn = document.getElementById('openBatchModalBtn');
+    if (batchBtn) { batchBtn.addEventListener('click', openBatchModal); }
+
+    var browseBtn = document.getElementById('openBrowseMembersBtn');
+    if (browseBtn) { browseBtn.addEventListener('click', openBrowseMembers); }
+
+    var browseSearchBtn = document.getElementById('browseMemberSearchBtn');
+    if (browseSearchBtn) { browseSearchBtn.addEventListener('click', function () { loadBrowseMembers(document.getElementById('browseMemberSearch').value.trim()); }); }
+
+    var browseSearchInput = document.getElementById('browseMemberSearch');
+    if (browseSearchInput) {
+        let _bt = null;
+        browseSearchInput.addEventListener('input', function () {
+            clearTimeout(_bt);
+            const v = this.value.trim();
+            _bt = setTimeout(() => loadBrowseMembers(v), 350);
+        });
+    }
+
+    // Event delegation for browse member cards
+    document.addEventListener('click', function (e) {
+        var card = e.target.closest ? e.target.closest('.member-browse-card[data-member-id]') : null;
+        if (!card) return;
+        pickBrowseMember(card.getAttribute('data-member-id'), card.getAttribute('data-member-name'));
+    });
+    
+    var undoBtn = document.getElementById('undoLastTransactionBtn');
+    if (undoBtn) { undoBtn.addEventListener('click', undoLastTransaction); }
+    
+    var confirmUndoBtn = document.getElementById('confirmUndoBtn');
+    if (confirmUndoBtn) { confirmUndoBtn.addEventListener('click', confirmUndo); }
+    
+    var confirmVoidBtn = document.getElementById('confirmVoidBtn');
+    if (confirmVoidBtn) { confirmVoidBtn.addEventListener('click', confirmVoid); }
+    
+    document.querySelectorAll('[data-action="view"]').forEach(function(btn) {
+        btn.addEventListener('click', function() { viewReceipt(this.dataset.transactionId); });
+    });
+    document.querySelectorAll('[data-action="print"]').forEach(function(btn) {
+        btn.addEventListener('click', function() { printReceipt(this.dataset.transactionId); });
+    });
+    document.querySelectorAll('[data-action="void"]').forEach(function(btn) {
+        btn.addEventListener('click', function() { voidTransaction(this.dataset.transactionId); });
+    });
+});
+</script>
+
+<style>
+/* Browse Members modal - responsive photo grid */
+.member-browse-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    border: 1px solid rgba(0,0,0,0.1);
+}
+.member-browse-card:hover,
+.member-browse-card:active {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    border-color: #0d6efd;
+}
+.member-browse-photo {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+    margin: 0 auto;
+    background: #e9ecef;
+}
+.member-browse-photo-placeholder {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #0d6efd, #6610f2);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin: 0 auto;
+}
+@media (max-width: 575.98px) {
+    .member-browse-photo,
+    .member-browse-photo-placeholder {
+        width: 52px;
+        height: 52px;
+        font-size: 1.3rem;
+    }
+}
+</style>
+
+<?php require_once __DIR__ . '/../includes/footer.php'; ?> 

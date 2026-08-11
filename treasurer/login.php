@@ -1,6 +1,9 @@
 <?php
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/security.php';
+require_once __DIR__ . '/../includes/remember_me.php';
+autoLoginWithRememberMe();
+
 
 // Redirect if already logged in
 if (isLoggedIn()) {
@@ -18,26 +21,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         $error = 'Invalid request. Please try again.';
     } else {
-        $email = strtolower(sanitizeInput($_POST['email']));
+        $email = strtolower(cleanInput($_POST['email']));
         $password = $_POST['password'];
         
         if (empty($email) || empty($password)) {
             $error = 'Please fill in all fields.';
-        } elseif (!checkRateLimit($email)) {
-            $error = 'Too many failed login attempts. Please try again later.';
         } else {
             $database = new Database();
             $db = $database->getConnection();
             
-            $query = "SELECT * FROM members WHERE LOWER(email) = :email AND member_id = 'GYF-ADMIN'";
+            $query = "SELECT * FROM members WHERE LOWER(email) = :email AND member_id = :treasurer_id";
             $stmt = $db->prepare($query);
-            $stmt->execute([':email' => $email]);
+            $stmt->execute([':email' => $email, ':treasurer_id' => TREASURER_MEMBER_ID]);
             
             if ($member = $stmt->fetch()) {
-                if (password_verify($password, $member['password'])) {
+                $lockout = checkAccountLockout($member['member_id']);
+                if ($lockout['locked']) {
+                    $minutes = ceil($lockout['remaining'] / 60);
+                    $error = "Account locked due to too many failed attempts. Please try again in {$minutes} minutes.";
+                } elseif (!checkRateLimit($member['member_id'])) {
+                    $error = 'Too many failed login attempts. Please try again later.';
+                } elseif (password_verify($password, $member['password'])) {
                     // Check if 2FA is enabled
                     if (!empty($member['two_fa_secret'])) {
-                        $_SESSION['temp_user'] = $member;
+                        session_regenerate_id(true);
+                        $_SESSION['temp_user'] = [
+                            'member_id' => $member['member_id'],
+                            'full_name' => $member['full_name'],
+                            'email' => $member['email'],
+                            'user_type' => 'treasurer'
+                        ];
                         $_SESSION['temp_user_type'] = 'treasurer';
                         redirectTo('/treasurer/verify-2fa.php');
                     }
@@ -56,18 +69,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     redirectTo('/treasurer/dashboard.php');
                 } else {
                     $error = 'Invalid credentials.';
-                    logAudit($email, 'Failed treasurer login attempt - wrong password');
+                    logAudit($member['member_id'], 'Failed treasurer login attempt');
                 }
             } else {
-                $error = 'Invalid treasurer credentials.';
-                logAudit($email, 'Failed treasurer login attempt - account not found');
+                $error = 'Invalid credentials.';
+                logAudit('system', 'Failed treasurer login attempt - account not found');
             }
         }
     }
 }
 
 // Check for password reset success
-if (isset($_GET['reset']) && $_GET['reset'] == 'success') {
+if (isset($_GET['reset']) && $_GET['reset'] === 'success') {
     $success = 'Password reset successful! Please login with your new password.';
 }
 ?>
@@ -81,18 +94,7 @@ if (isset($_GET['reset']) && $_GET['reset'] == 'success') {
     
     <!-- Bootstrap 5 CSS -->
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
-    <!-- Fallback to CDN if local file not found -->
-    <script>
-        (function() {
-            var css = document.querySelector('link[href*="bootstrap.min.css"]');
-            if (css && !css.sheet) {
-                var fallback = document.createElement('link');
-                fallback.rel = 'stylesheet';
-                fallback.href = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css';
-                document.head.appendChild(fallback);
-            }
-        })();
-    </script>
+    <script src="<?php echo APP_URL; ?>/assets/js/header-common.js"></script>
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/css/style.css">
@@ -242,6 +244,26 @@ if (isset($_GET['reset']) && $_GET['reset'] == 'success') {
         .login-card .card-body {
             background: transparent;
         }
+
+        @media (max-width: 575px) {
+            .login-header {
+                padding: 20px 15px;
+            }
+            .login-header .treasurer-icon {
+                font-size: 42px;
+                margin-bottom: 10px;
+            }
+            .login-body {
+                padding: 20px 15px;
+            }
+            .login-header h4 {
+                font-size: 1.15rem;
+            }
+            .security-badge {
+                font-size: 13px;
+                padding: 8px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -270,14 +292,14 @@ if (isset($_GET['reset']) && $_GET['reset'] == 'success') {
                     <div class="login-body">
                         <?php if ($success): ?>
                             <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                <strong>✅ Success!</strong> <?php echo $success; ?>
+                                <strong>✅ Success!</strong> <?php echo htmlspecialchars($success, ENT_QUOTES, 'UTF-8'); ?>
                                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                             </div>
                         <?php endif; ?>
                         
                         <?php if ($error): ?>
                             <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                                <strong>⚠️ Error!</strong> <?php echo $error; ?>
+                                <strong>⚠️ Error!</strong> <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
                                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                             </div>
                         <?php endif; ?>
@@ -328,7 +350,7 @@ if (isset($_GET['reset']) && $_GET['reset'] == 'success') {
                                            placeholder="Enter your password" 
                                            required
                                            autocomplete="off">
-                                    <span class="password-toggle" onclick="togglePassword()" id="toggleIcon">
+                                    <span class="password-toggle" id="toggleIcon">
                                         👁️
                                     </span>
                                 </div>
@@ -366,11 +388,9 @@ if (isset($_GET['reset']) && $_GET['reset'] == 'success') {
     
     <!-- Scripts -->
     <script src="<?php echo APP_URL; ?>/assets/bootstrap/js/bootstrap.bundle.min.js"></script>
-    <script>
+    <script src="<?php echo APP_URL; ?>/assets/js/main.js"></script>
     
-    </script>
-    
-    <script>
+    <script nonce="<?php echo CSP_NONCE; ?>">
         // Password visibility toggle
         function togglePassword() {
             const passwordField = document.getElementById('password');
@@ -442,36 +462,21 @@ if (isset($_GET['reset']) && $_GET['reset'] == 'success') {
                 }
             }
         });
+        
+        // Password toggle
+        var toggleIcon = document.getElementById('toggleIcon');
+        if (toggleIcon) {
+            toggleIcon.addEventListener('click', function() {
+                var passwordField = document.getElementById('password');
+                if (passwordField) {
+                    var type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
+                    passwordField.setAttribute('type', type);
+                }
+            });
+        }
     </script>
 
-    <!-- Background slideshow: cycle uploads images behind the dark overlay -->
-    <script>
-    (function () {
-        var container = document.getElementById('bgSlideshow');
-        if (!container) return;
-        var base = '';
-        var images = [];
-        for (var n = 1; n <= 24; n++) {
-            images.push(base + 'uploads/' + n + '.jpg');
-        }
-        images.push(base + 'uploads/glassmorphism-background.jpg');
-        var slides = [];
-        images.forEach(function (src, idx) {
-            var div = document.createElement('div');
-            div.className = 'slide' + (idx === 0 ? ' active' : '');
-            div.style.backgroundImage = 'url(' + src + ')';
-            container.appendChild(div);
-            slides.push(div);
-        });
-        var current = 0;
-        setInterval(function () {
-            if (slides.length < 2) return;
-            slides[current].classList.remove('active');
-            current = (current + 1) % slides.length;
-            slides[current].classList.add('active');
-        }, 5000);
-    })();
-    </script>
+    <script src="<?php echo APP_URL; ?>/assets/js/slideshow.js"></script>
 </body>
 </html>
 

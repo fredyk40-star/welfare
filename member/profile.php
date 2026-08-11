@@ -18,12 +18,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         $error = 'Invalid request. Please try again.';
     } else {
-        $phone = sanitizeInput($_POST['phone']);
-        $address = sanitizeInput($_POST['address']);
-        $occupation = isset($_POST['occupation']) ? sanitizeInput($_POST['occupation']) : null;
-        $emergency_name = sanitizeInput($_POST['emergency_contact_name']);
-        $emergency_relationship = sanitizeInput($_POST['emergency_contact_relationship']);
-        $emergency_phone = sanitizeInput($_POST['emergency_contact_phone']);
+        $phone = cleanInput($_POST['phone'] ?? '');
+        $address = cleanInput($_POST['address'] ?? '');
+        $occupation = isset($_POST['occupation']) ? cleanInput($_POST['occupation']) : null;
+        $emergency_name = cleanInput($_POST['emergency_contact_name'] ?? '');
+        $emergency_relationship = cleanInput($_POST['emergency_contact_relationship'] ?? '');
+        $emergency_phone = cleanInput($_POST['emergency_contact_phone'] ?? '');
 
         if (empty($phone) || empty($address) || empty($emergency_name) || empty($emergency_phone)) {
             $error = 'Please fill in all required fields.';
@@ -57,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         $error = 'Invalid request. Please try again.';
     } elseif (isset($_FILES['passport_photo']) && $_FILES['passport_photo']['error'] === UPLOAD_ERR_OK) {
+        if ($_FILES['passport_photo']['size'] > 0) {
         $upload = uploadPhoto($_FILES['passport_photo']);
         if ($upload['success']) {
             $stmt = $db->prepare("UPDATE members SET passport_photo = :photo WHERE member_id = :member_id");
@@ -69,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     } else {
         $error = 'Please select an image to upload.';
     }
+}
 }
 
 // Load current member data
@@ -94,11 +96,11 @@ $member = $stmt->fetch();
         <div class="card mb-4 text-center">
             <div class="card-body">
                 <?php if ($member['passport_photo']): ?>
-                    <img src="<?php echo APP_URL; ?>/uploads/photos/<?php echo $member['passport_photo']; ?>"
+                    <img src="<?php echo displayPhotoUrl($member['passport_photo']); ?>"
                          class="app-logo-large mb-3" alt="Profile">
                 <?php endif; ?>
                 <h4 class="mb-1"><?php echo htmlspecialchars($member['full_name']); ?></h4>
-                <p class="text-muted mb-0"><?php echo $member['member_id']; ?></p>
+                <p class="text-muted mb-0"><?php echo htmlspecialchars($member['member_id']); ?></p>
 
                 <form method="POST" action="" enctype="multipart/form-data" class="mt-3 d-inline-block">
                     <input type="hidden" name="action" value="update_photo">

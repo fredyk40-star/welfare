@@ -18,14 +18,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
     $output = fopen('php://output', 'w');
     fputcsv($output, ['Receipt No', 'Amount', 'Payment Method', 'Billing Period', 'Date']);
     
-    $query = "SELECT * FROM transactions WHERE member_id = :member_id ORDER BY transaction_date DESC";
+    $query = "SELECT * FROM transactions WHERE member_id = :member_id AND status != 'void' ORDER BY transaction_date DESC";
     $stmt = $db->prepare($query);
     $stmt->execute([':member_id' => $member_id]);
     
     while ($row = $stmt->fetch()) {
-        $billing_period = $row['billing_cycle_month'] ? 
-            date('M Y', mktime(0, 0, 0, $row['billing_cycle_month'], 1, $row['billing_cycle_year'])) : 
-            $row['billing_cycle_year'];
+        $billing_period = $row['billing_cycle_month'] ? formatBillingPeriod($row['billing_cycle_month'], $row['billing_cycle_year']) : $row['billing_cycle_year'];
             
         fputcsv($output, [
             $row['receipt_no'],
@@ -69,13 +67,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     $yearly_stmt->execute([':member_id' => $member_id, ':year' => $current_year]);
     $yearly_total = $yearly_stmt->fetch()['total'];
     
-    $settings_query = "SELECT annual_amount FROM settings ORDER BY id DESC LIMIT 1";
-    $settings = $db->query($settings_query)->fetch();
-    $annual_target = $settings['annual_amount'] ?? 1;
+    $settings = getWelfareSettings($db);
+    $annual_target = $settings['annual_amount'];
     if ($annual_target <= 0) $annual_target = 1;
     
     // Create simple HTML for PDF
-    $html = '
+    $html = ';
     <!DOCTYPE html>
     <html>
     <head>
@@ -100,7 +97,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
         <div class="header">
             <h2>GYF Welfare Management System</h2>
             <h4>Transaction History Report</h4>
-            <p>Member: ' . htmlspecialchars($member['full_name']) . ' (' . $member['member_id'] . ')</p>
+            <p>Member: ' . htmlspecialchars($member['full_name']) . ' (' . htmlspecialchars($member['member_id']) . ')</p>
             <p>Generated: ' . date('F j, Y g:i A') . '</p>
         </div>
         
@@ -114,7 +111,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
                 </tr>
                 <tr>
                     <td><strong>Progress:</strong></td>
-                    <td>' . number_format(($yearly_total / $annual_target) * 100, 1) . '%</td>
+                    <td>' . number_format($annual_target > 0 ? ($yearly_total / $annual_target) * 100 : 0, 1) . '%</td>
                     <td><strong>Remaining:</strong></td>
                     <td>GH₵ ' . number_format(max($annual_target - $yearly_total, 0), 2) . '</td>
                 </tr>
@@ -134,21 +131,19 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
             <tbody>';
     
     foreach ($transactions as $transaction) {
-        $billing_period = $transaction['billing_cycle_month'] ? 
-            date('M Y', mktime(0, 0, 0, $transaction['billing_cycle_month'], 1, $transaction['billing_cycle_year'])) : 
-            $transaction['billing_cycle_year'];
+        $billing_period = $transaction['billing_cycle_month'] ? formatBillingPeriod($transaction['billing_cycle_month'], $transaction['billing_cycle_year']) : $transaction['billing_cycle_year'];
             
         $html .= '
                 <tr>
                     <td>' . htmlspecialchars($transaction['receipt_no']) . '</td>
                     <td>GH₵ ' . number_format($transaction['amount'], 2) . '</td>
-                    <td>' . $transaction['payment_method'] . '</td>
+                    <td>' . htmlspecialchars($transaction['payment_method']) . '</td>
                     <td>' . $billing_period . '</td>
                     <td>' . date('M d, Y', strtotime($transaction['transaction_date'])) . '</td>
                 </tr>';
     }
     
-    $html .= '
+    $html .= ';
             </tbody>
         </table>
         
@@ -166,7 +161,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
 // Get filter parameters
 $filter_month = isset($_GET['month']) ? intval($_GET['month']) : 0;
 $filter_year = isset($_GET['year']) ? intval($_GET['year']) : 0;
-$filter_method = isset($_GET['method']) ? sanitizeInput($_GET['method']) : '';
+$filter_method = isset($_GET['method']) ? cleanInput($_GET['method']) : '';
 
 // Build query based on filters
 $where_clause = "WHERE t.member_id = :member_id";
@@ -219,10 +214,9 @@ $yearly_stmt = $db->prepare($yearly_query);
 $yearly_stmt->execute([':member_id' => $member_id, ':year' => $current_year]);
 $yearly_total = $yearly_stmt->fetch()['total'];
 
-$settings_query = "SELECT annual_amount, monthly_amount FROM settings WHERE id = 1";
-$settings = $db->query($settings_query)->fetch();
-$annual_target = $settings['annual_amount'] ?? 1;
-$monthly_target = $settings['monthly_amount'] ?? 1;
+$settings = getWelfareSettings($db);
+$annual_target = $settings['annual_amount'];
+$monthly_target = $settings['monthly_amount'];
 
 // Guard against division by zero
 if ($annual_target <= 0) $annual_target = 1;
@@ -325,7 +319,7 @@ if ($monthly_target <= 0) $monthly_target = 1;
                class="btn btn-danger">
                 📄 Export to PDF
             </a>
-            <button class="btn btn-info" onclick="window.print()">
+            <button class="btn btn-info" id="printBtn">
                 🖨️ Print
             </button>
         </div>
@@ -381,36 +375,38 @@ if ($monthly_target <= 0) $monthly_target = 1;
                                                 echo $transaction['payment_method'] == 'Cash' ? 'success' : 
                                                     ($transaction['payment_method'] == 'Mobile Money' ? 'warning' : 
                                                     ($transaction['payment_method'] == 'Bank Transfer' ? 'info' : 'primary')); 
-                                            ?>">
-                                                <?php echo $transaction['payment_method']; ?>
+                                             ?>">
+                                                 <?php echo htmlspecialchars($transaction['payment_method']); ?>
                                             </span>
                                         </td>
                                         <td>
-                                            <?php 
-                                            if ($transaction['billing_cycle_month']) {
-                                                echo date('F Y', mktime(0, 0, 0, $transaction['billing_cycle_month'], 1, $transaction['billing_cycle_year']));
-                                            } else {
-                                                echo 'Year ' . $transaction['billing_cycle_year'];
-                                            }
-                                            ?>
+                                             <?php 
+                                             if ($transaction['billing_cycle_month']) {
+                                                 echo formatBillingPeriod($transaction['billing_cycle_month'], $transaction['billing_cycle_year']);
+                                             } else {
+                                                 echo 'Year ' . htmlspecialchars($transaction['billing_cycle_year']);
+                                             }
+                                             ?>
                                         </td>
-                                        <td><?php echo date('M d, Y g:i A', strtotime($transaction['transaction_date'])); ?></td>
+                                        <td><?php echo !empty($transaction['transaction_date']) ? htmlspecialchars(date('M d, Y g:i A', strtotime($transaction['transaction_date']))) : 'N/A'; ?></td>
                                         <td>
                                             <div class="btn-group btn-group-sm">
                                                 <button class="btn btn-info" 
-                                                        onclick="viewReceipt('<?php echo htmlspecialchars($transaction['receipt_no'], ENT_QUOTES, 'UTF-8'); ?>')"
+                                                        data-receipt-no="<?php echo htmlspecialchars($transaction['receipt_no']); ?>"
                                                         title="View Receipt">
-                                                    👁️
+                                                    View
                                                 </button>
                                                 <button class="btn btn-success"
-                                                        onclick="printReceipt('<?php echo htmlspecialchars($transaction['receipt_no'], ENT_QUOTES, 'UTF-8'); ?>')"
+                                                        data-receipt-no="<?php echo htmlspecialchars($transaction['receipt_no']); ?>"
+                                                        data-action="print"
                                                         title="Print Receipt">
-                                                    🖨️
+                                                    Print
                                                 </button>
                                                 <button class="btn btn-primary"
-                                                        onclick="downloadReceipt('<?php echo htmlspecialchars($transaction['receipt_no'], ENT_QUOTES, 'UTF-8'); ?>')"
+                                                        data-receipt-no="<?php echo htmlspecialchars($transaction['receipt_no']); ?>"
+                                                        data-action="download"
                                                         title="Download Receipt">
-                                                    📥
+                                                    Download
                                                 </button>
                                             </div>
                                         </td>
@@ -459,7 +455,7 @@ if ($monthly_target <= 0) $monthly_target = 1;
                     foreach ($months as $index => $month_name):
                         $month_num = $index + 1;
                         $amount = isset($monthly_data[$month_num]) ? $monthly_data[$month_num] : 0;
-                        $percentage = ($amount / $monthly_target) * 100;
+                        $percentage = $monthly_target > 0 ? ($amount / $monthly_target) * 100 : 0;
                         $is_current = $month_num == date('m');
                         $is_future = $month_num > date('m');
                     ?>
@@ -521,7 +517,7 @@ if ($monthly_target <= 0) $monthly_target = 1;
                         <?php foreach ($payment_methods as $method): ?>
                             <div class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
-                                    <h6 class="mb-0"><?php echo $method['payment_method']; ?></h6>
+                                    <h6 class="mb-0"><?php echo htmlspecialchars($method['payment_method']); ?></h6>
                                     <small><?php echo $method['count']; ?> transaction(s)</small>
                                 </div>
                                 <span class="badge bg-primary rounded-pill">
@@ -617,14 +613,40 @@ if ($monthly_target <= 0) $monthly_target = 1;
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" onclick="printReceipt()">Print Receipt</button>
+                <button type="button" class="btn btn-primary" id="printReceiptBtn">Print Receipt</button>
             </div>
         </div>
     </div>
 </div>
 
-<script>
+<script nonce="<?php echo CSP_NONCE; ?>">
 let currentReceiptNo = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[data-receipt-no]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const receiptNo = this.dataset.receiptNo;
+            const action = this.dataset.action;
+            if (action === 'print') {
+                printReceipt(receiptNo);
+            } else if (action === 'download') {
+                downloadReceipt(receiptNo);
+            } else {
+                viewReceipt(receiptNo);
+            }
+        });
+    });
+    
+    const printBtn = document.getElementById('printReceiptBtn');
+    if (printBtn) {
+        printBtn.addEventListener('click', printReceipt);
+    }
+    
+    const printPageBtn = document.getElementById('printBtn');
+    if (printPageBtn) {
+        printPageBtn.addEventListener('click', window.print);
+    }
+});
 
 function viewReceipt(receiptNo) {
     currentReceiptNo = receiptNo;
@@ -635,7 +657,7 @@ function viewReceipt(receiptNo) {
     receiptModal.show();
     
     // Fetch receipt content
-    fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${receiptNo}`)
+    fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(receiptNo)}`)
         .then(response => response.text())
         .then(html => {
             document.getElementById('receiptContent').innerHTML = html;
@@ -648,7 +670,7 @@ function viewReceipt(receiptNo) {
 function printReceipt() {
     if (!currentReceiptNo) return;
     const printWindow = window.open(
-        `<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${currentReceiptNo}`,
+        `<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(currentReceiptNo)}`,
         'PrintReceipt',
         'width=800,height=600'
     );
@@ -661,7 +683,7 @@ function printReceipt() {
 }
 
 function downloadReceipt(receiptNo) {
-    window.location.href = `<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${receiptNo}&download=1`;
+    window.location.href = `<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(receiptNo)}&download=1`;
 }
 </script>
 

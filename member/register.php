@@ -12,17 +12,17 @@ $csrf_token = generateCsrfToken();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Sanitize inputs
-    $full_name = sanitizeInput($_POST['full_name']);
-    $dob = sanitizeInput($_POST['dob']);
-    $gender = sanitizeInput($_POST['gender']);
-    $email = sanitizeInput($_POST['email']);
-    $country_code = sanitizeInput($_POST['country_code']);
-    $phone = sanitizeInput($_POST['phone']);
-    $address = sanitizeInput($_POST['address']);
-    $occupation = isset($_POST['occupation']) ? sanitizeInput($_POST['occupation']) : null;
-    $emergency_name = sanitizeInput($_POST['emergency_contact_name']);
-    $emergency_relationship = sanitizeInput($_POST['emergency_contact_relationship']);
-    $emergency_phone = sanitizeInput($_POST['emergency_contact_phone']);
+    $full_name = cleanInput($_POST['full_name']);
+    $dob = cleanInput($_POST['dob']);
+    $gender = cleanInput($_POST['gender']);
+    $email = cleanInput($_POST['email']);
+    $country_code = cleanInput($_POST['country_code']);
+    $phone = cleanInput($_POST['phone']);
+    $address = cleanInput($_POST['address']);
+    $occupation = isset($_POST['occupation']) ? cleanInput($_POST['occupation']) : null;
+    $emergency_name = cleanInput($_POST['emergency_contact_name']);
+    $emergency_relationship = cleanInput($_POST['emergency_contact_relationship']);
+    $emergency_phone = cleanInput($_POST['emergency_contact_phone']);
     $password = $_POST['password'];
     $confirm_password = $_POST['confirm_password'];
     $consent = isset($_POST['consent']);
@@ -31,10 +31,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $phone = $country_code . ' ' . $phone;
     
     // Validate inputs
+    $allowed_country_codes = ['+233', '+1', '+44', '+27', '+234', '+254', '+255', '+256', '+265', '+260', '+263', '+258', '+257', '+250', '+221', '+223', '+226', '+229', '+224', '+225', '+220', '+232', '+231'];
     if (empty($full_name) || empty($email) || empty($phone) || empty($password)) {
         $error = 'Please fill in all required fields.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = 'Invalid email format.';
+    } elseif (!in_array($country_code, $allowed_country_codes, true)) {
+        $error = 'Invalid country code selected.';
+    } elseif (!preg_match('/^[0-9\s]+$/', str_replace($country_code, '', $phone))) {
+        $error = 'Invalid phone number. Please enter digits only.';
     } elseif ($password !== $confirm_password) {
         $error = 'Passwords do not match.';
     } elseif (($password_validation = validatePassword($password)) !== true) {
@@ -99,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ]);
                     
                     logAudit($member_id, 'New member registered');
-                    $success = "Registration successful! Your Member ID is: <strong>$member_id</strong>";
+                    $success = "Registration successful! Your Member ID is: <strong>" . htmlspecialchars($member_id) . "</strong>";
                     
                 } catch (PDOException $e) {
                     $error = 'Registration failed. Please try again.';
@@ -129,6 +134,7 @@ $emergency_phone = $emergency_phone ?? '';
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Member Registration - <?php echo APP_NAME; ?></title>
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
+    <script src="<?php echo APP_URL; ?>/assets/js/header-common.js"></script>
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/css/style.css">
 </head>
 <body>
@@ -136,12 +142,7 @@ $emergency_phone = $emergency_phone ?? '';
     <div class="bg-slideshow" id="bgSlideshow"></div>
     <div class="container mt-5">
         <div class="row justify-content-center">
-            <div class="col-md-8">
-                <div class="mb-2">
-                    <a href="<?php echo APP_URL; ?>/" class="btn btn-outline-light btn-sm back-link">
-                        ← Back
-                    </a>
-                </div>
+            <div class="col-md-8">              
                 <div class="card">
                     <div class="card-header text-center">
                         <h3>Member Registration</h3>
@@ -252,14 +253,24 @@ $emergency_phone = $emergency_phone ?? '';
                                 <div class="row">
                                     <div class="col-md-6 mb-3">
                                         <label for="password" class="form-label">Password *</label>
-                                        <input type="password" class="form-control" id="password" name="password" autocomplete="new-password"
-                                               placeholder="8-255 characters, include uppercase, lowercase, number, and special character" required>
+                                        <div class="input-group">
+                                            <input type="password" class="form-control" id="password" name="password" autocomplete="new-password"
+                                                   placeholder="8-255 characters, include uppercase, lowercase, number, and special character" required>
+                                            <button class="btn btn-outline-secondary" type="button" data-toggle-password="password" data-toggle-icon="toggleIcon1">
+                                                <span id="toggleIcon1">👁️</span>
+                                            </button>
+                                        </div>
                                         <small class="text-muted">Password must be 8-255 characters with uppercase, lowercase, number, and special character</small>
                                     </div>
                                     <div class="col-md-6 mb-3">
                                         <label for="confirm_password" class="form-label">Confirm Password *</label>
-                                        <input type="password" class="form-control" id="confirm_password" 
-                                               name="confirm_password" required>
+                                        <div class="input-group">
+                                            <input type="password" class="form-control" id="confirm_password" 
+                                                   name="confirm_password" required>
+                                            <button class="btn btn-outline-secondary" type="button" data-toggle-password="confirm_password" data-toggle-icon="toggleIcon2">
+                                                <span id="toggleIcon2">👁️</span>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 
@@ -281,6 +292,11 @@ $emergency_phone = $emergency_phone ?? '';
                             
                             <div class="mt-3 text-center">
                                 <a href="login.php" class="text-decoration-none">Already have an account? Login here</a>
+                                <div class="mb-3">
+                    <a href="<?php echo APP_URL; ?>/" class="btn btn-outline-light btn-sm back-link">
+                        ← Back
+                    </a>
+                </div>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -290,37 +306,46 @@ $emergency_phone = $emergency_phone ?? '';
     </div>
     
     <script src="<?php echo APP_URL; ?>/assets/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="<?php echo APP_URL; ?>/assets/js/main.js"></script>
     <script src="<?php echo APP_URL; ?>/assets/js/validation.js"></script>
-
-    <!-- Background slideshow: cycle uploads images behind the dark overlay -->
-    <script>
-    (function () {
-        var container = document.getElementById('bgSlideshow');
-        if (!container) return;
-        var base = '';
-        var images = [];
-        for (var n = 1; n <= 24; n++) {
-            images.push(base + 'uploads/' + n + '.jpg');
+    <script nonce="<?php echo CSP_NONCE; ?>">
+    function togglePassword(fieldId, iconId) {
+        const field = document.getElementById(fieldId);
+        const icon = document.getElementById(iconId);
+        if (!field || !icon) return;
+        if (field.type === 'password') {
+            field.type = 'text';
+            icon.textContent = '🙈';
+        } else {
+            field.type = 'password';
+            icon.textContent = '👁️';
         }
-        images.push(base + 'uploads/glassmorphism-background.jpg');
-        var slides = [];
-        images.forEach(function (src, idx) {
-            var div = document.createElement('div');
-            div.className = 'slide' + (idx === 0 ? ' active' : '');
-            div.style.backgroundImage = 'url(' + src + ')';
-            container.appendChild(div);
-            slides.push(div);
+    }
+
+    document.getElementById('registrationForm').addEventListener('submit', function(e) {
+        const newPwd = document.getElementById('password');
+        const confirmPwd = document.getElementById('confirm_password');
+        if (newPwd && confirmPwd && newPwd.value !== confirmPwd.value) {
+            e.preventDefault();
+            alert('Passwords do not match.');
+        }
+    });
+    
+    document.querySelectorAll('[data-toggle-password]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var fieldId = this.dataset.togglePassword;
+            var iconId = this.dataset.toggleIcon;
+            var field = document.getElementById(fieldId);
+            var icon = document.getElementById(iconId);
+            if (!field || !icon) return;
+            var type = field.getAttribute('type') === 'password' ? 'text' : 'password';
+            field.setAttribute('type', type);
         });
-        var current = 0;
-        setInterval(function () {
-            if (slides.length < 2) return;
-            slides[current].classList.remove('active');
-            current = (current + 1) % slides.length;
-            slides[current].classList.add('active');
-        }, 5000);
-    })();
+    });
     </script>
-</body></body>
+
+    <script src="<?php echo APP_URL; ?>/assets/js/slideshow.js"></script>
+</body>
 </html>
 
 

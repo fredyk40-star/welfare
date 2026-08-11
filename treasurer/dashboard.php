@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 require_once __DIR__ . '/../includes/header.php';
 
 // Check if user is treasurer
@@ -13,47 +13,64 @@ $db = $database->getConnection();
 $current_month = date('m');
 $current_year = date('Y');
 
-// Get welfare settings
-$settings_query = "SELECT * FROM settings WHERE id = 1";
-$settings = $db->query($settings_query)->fetch();
-$annual_target = $settings['annual_amount'] ?? 1000;
-$monthly_target = $settings['monthly_amount'] ?? 100;
+$dashboard_error = '';
 
-// Get total collected this month
-$monthly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-                  WHERE billing_cycle_month = :month AND billing_cycle_year = :year";
-$monthly_stmt = $db->prepare($monthly_query);
-$monthly_stmt->execute([':month' => $current_month, ':year' => $current_year]);
-$monthly_total = $monthly_stmt->fetch()['total'];
+try {
+    // Get welfare settings
+    $settings = getWelfareSettings($db);
+    $annual_target = $settings['annual_amount'];
+    $monthly_target = $settings['monthly_amount'];
 
-// Get total collected this year
-$yearly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-                 WHERE billing_cycle_year = :year";
-$yearly_stmt = $db->prepare($yearly_query);
-$yearly_stmt->execute([':year' => $current_year]);
-$yearly_total = $yearly_stmt->fetch()['total'];
-
-// Get total members
-$members_query = "SELECT COUNT(*) as total FROM members WHERE member_id != 'GYF-ADMIN'";
-$total_members = $db->query($members_query)->fetch()['total'];
-
-// Get pending members (members who haven't paid this month)
-$pending_query = "SELECT COUNT(*) as total FROM members m 
-                  WHERE m.member_id != 'GYF-ADMIN' 
-                  AND m.member_id NOT IN (
-                      SELECT DISTINCT member_id FROM transactions 
+    // Get total collected this month
+    $monthly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
                       WHERE billing_cycle_month = :month AND billing_cycle_year = :year
-                  )";
-$pending_stmt = $db->prepare($pending_query);
-$pending_stmt->execute([':month' => $current_month, ':year' => $current_year]);
-$pending_members = $pending_stmt->fetch()['total'];
+                      AND status != 'void'";
+    $monthly_stmt = $db->prepare($monthly_query);
+    $monthly_stmt->execute([':month' => $current_month, ':year' => $current_year]);
+    $monthly_total = $monthly_stmt->fetch()['total'];
 
-// Get recent transactions
-$recent_query = "SELECT t.*, m.full_name, m.passport_photo 
-                FROM transactions t 
-                JOIN members m ON t.member_id = m.member_id 
-                ORDER BY t.transaction_date DESC LIMIT 10";
-$recent_transactions = $db->query($recent_query)->fetchAll();
+    // Get total collected this year
+    $yearly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
+                     WHERE billing_cycle_year = :year
+                     AND status != 'void'";
+    $yearly_stmt = $db->prepare($yearly_query);
+    $yearly_stmt->execute([':year' => $current_year]);
+    $yearly_total = $yearly_stmt->fetch()['total'];
+
+    // Get total members
+    $members_query = "SELECT COUNT(*) as total FROM members WHERE member_id != :treasurer_id";
+    $members_stmt = $db->prepare($members_query);
+    $members_stmt->execute([':treasurer_id' => TREASURER_MEMBER_ID]);
+    $total_members = $members_stmt->fetch()['total'];
+
+    // Get pending members (members who haven't paid this month)
+    $pending_query = "SELECT COUNT(*) as total FROM members m 
+                      WHERE m.member_id != :treasurer_id 
+                      AND m.member_id NOT IN (
+                          SELECT DISTINCT member_id FROM transactions 
+                          WHERE billing_cycle_month = :month AND billing_cycle_year = :year
+                          AND status != 'void'
+                      )";
+    $pending_stmt = $db->prepare($pending_query);
+    $pending_stmt->execute([':month' => $current_month, ':year' => $current_year, ':treasurer_id' => TREASURER_MEMBER_ID]);
+    $pending_members = $pending_stmt->fetch()['total'];
+
+    // Get recent transactions
+    $recent_query = "SELECT t.id, t.receipt_no, t.member_id, t.amount, t.payment_method, t.billing_cycle_month, t.billing_cycle_year, t.transaction_date, t.status, m.full_name, m.passport_photo 
+                    FROM transactions t 
+                    JOIN members m ON t.member_id = m.member_id 
+                    WHERE t.status != 'void'
+                    ORDER BY t.transaction_date DESC LIMIT 10";
+    $recent_transactions = $db->query($recent_query)->fetchAll();
+} catch (Exception $e) {
+    $dashboard_error = 'Unable to load dashboard data. Please contact support.';
+    error_log('Dashboard error: ' . $e->getMessage());
+    $monthly_total = 0;
+    $yearly_total = 0;
+    $total_members = 0;
+    $pending_members = 0;
+    $recent_transactions = [];
+}
 ?>
 
 <div class="row">
@@ -94,6 +111,10 @@ $recent_transactions = $db->query($recent_query)->fetchAll();
     </div>
 </div>
 
+<?php if ($dashboard_error): ?>
+    <div class="alert alert-danger"><?php echo $dashboard_error; ?></div>
+<?php endif; ?>
+
 <!-- Recent Transactions -->
 <div class="row mb-4">
     <div class="col-12">
@@ -121,19 +142,19 @@ $recent_transactions = $db->query($recent_query)->fetchAll();
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <?php if ($transaction['passport_photo']): ?>
-                                                <img src="<?php echo APP_URL; ?>/uploads/photos/<?php echo $transaction['passport_photo']; ?>" 
+                                                <img src="<?php echo displayPhotoUrl($transaction['passport_photo']); ?>"
                                                      class="member-photo me-2" alt="Photo">
                                             <?php endif; ?>
                                             <div>
                                                 <strong><?php echo htmlspecialchars($transaction['full_name']); ?></strong>
                                                 <br>
-                                                <small><?php echo $transaction['member_id']; ?></small>
+                                                <small><?php echo htmlspecialchars($transaction['member_id']); ?></small>
                                             </div>
                                         </div>
                                     </td>
                                     <td>GH₵ <?php echo number_format($transaction['amount'], 2); ?></td>
-                                    <td><?php echo $transaction['payment_method']; ?></td>
-                                    <td><?php echo date('M d, Y', strtotime($transaction['transaction_date'])); ?></td>
+                                    <td><?php echo htmlspecialchars($transaction['payment_method']); ?></td>
+                                    <td><?php echo !empty($transaction['transaction_date']) ? htmlspecialchars(date('M d, Y', strtotime($transaction['transaction_date']))) : 'N/A'; ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -154,7 +175,7 @@ $recent_transactions = $db->query($recent_query)->fetchAll();
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-4 mb-2">
-                        <button class="btn btn-primary w-100" type="button" onclick="openPaymentModal()">
+                        <button class="btn btn-primary w-100" type="button" id="openPaymentModalBtn">
                             ➕ Record Payment
                         </button>
                     </div>
@@ -188,7 +209,7 @@ $recent_transactions = $db->query($recent_query)->fetchAll();
                     <div class="input-group">
                         <input type="text" class="form-control" id="memberSearch"
                                placeholder="Search by name, member ID, or phone...">
-                        <button class="btn btn-primary" type="button" onclick="searchMembers()">Search</button>
+                        <button class="btn btn-primary" type="button" id="searchMembersBtn">Search</button>
                     </div>
                     <div id="searchResults" class="mt-2"></div>
                 </div>
@@ -196,6 +217,8 @@ $recent_transactions = $db->query($recent_query)->fetchAll();
                     <input type="hidden" name="action" value="record_payment">
                     <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                     <input type="hidden" name="member_id" id="selectedMemberId">
+                    <input type="hidden" name="transaction_date" value="<?php echo date('Y-m-d'); ?>">
+                    <input type="hidden" name="transaction_time" value="<?php echo date('H:i'); ?>">
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Amount (GH₵) *</label>
@@ -246,7 +269,7 @@ $recent_transactions = $db->query($recent_query)->fetchAll();
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
 
-<script>
+<script nonce="<?php echo CSP_NONCE; ?>">
 // Global function to open the payment modal safely and prevent stuck backdrops
 function openPaymentModal() {
     const modalEl = document.getElementById('paymentModal');
@@ -274,9 +297,10 @@ function searchMembers() {
                     const safeId = String(m.member_id).replace(/[&<>'"]/g, tag => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[tag] || tag));
                     const safePhone = String(m.phone).replace(/[&<>'"]/g, tag => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[tag] || tag));
                     const safePhoto = m.passport_photo ? String(m.passport_photo).replace(/[&<>'"]/g, tag => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[tag] || tag)) : '';
+                    const photoUrl = (p) => { if (!p) return ''; p = String(p); return p.indexOf('http') === 0 ? p : '<?php echo APP_URL; ?>/uploads/photos/' + p; };
                     html += `<div class="card mb-2 member-card" style="cursor:pointer" data-member-id="${safeId}" data-member-name="${safeName}">
                         <div class="card-body"><div class="d-flex align-items-center">
-                        ${safePhoto ? `<img src='<?php echo APP_URL; ?>/uploads/photos/${safePhoto}' class='member-photo me-2'>` : ''}
+                        ${safePhoto ? `<img src='${photoUrl(safePhoto)}' class='member-photo me-2'>` : ''}
                         <div><strong>${safeName}</strong><br><small>${safeId} | ${safePhone}</small></div></div></div></div>`;
                 });
             } else {
@@ -321,4 +345,14 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
+
+document.addEventListener('DOMContentLoaded', function() {
+    var paymentBtn = document.getElementById('openPaymentModalBtn');
+    if (paymentBtn) { paymentBtn.addEventListener('click', openPaymentModal); }
+    
+    var searchBtn = document.getElementById('searchMembersBtn');
+    if (searchBtn) { searchBtn.addEventListener('click', searchMembers); }
+});
 </script>
+
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>

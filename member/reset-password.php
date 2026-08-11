@@ -4,7 +4,7 @@ require_once __DIR__ . '/../includes/security.php';
 
 $error = '';
 $success = '';
-$token = isset($_GET['token']) ? sanitizeInput($_GET['token']) : '';
+$token = isset($_GET['token']) ? ($_GET['token'] ?? '') : '';
 $csrf_token = generateCsrfToken();
 
 if (empty($token)) {
@@ -71,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($token)) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Reset Password - <?php echo APP_NAME; ?></title>
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
+    <script src="<?php echo APP_URL; ?>/assets/js/header-common.js"></script>
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/css/style.css">
 </head>
 <body class="bg-light">
@@ -97,20 +98,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($token)) {
                             </div>
                         <?php else: ?>
                             <?php if (empty($token)) return; ?>
-                            <form method="POST" action="">
+                            <form method="POST" action="" id="resetPasswordForm">
                                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                                 <input type="hidden" name="token" value="<?php echo htmlspecialchars($token); ?>">
                                 <div class="mb-3">
                                     <label for="password" class="form-label">New Password</label>
-                                    <input type="password" class="form-control" id="password" name="password" 
-                                           placeholder="8-255 characters, include uppercase, lowercase, number, and special character" required>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="password" name="password" 
+                                               placeholder="8-255 characters, include uppercase, lowercase, number, and special character" required>
+                                        <button class="btn btn-outline-secondary" type="button" data-toggle-password="password" data-toggle-icon="toggleIcon1">
+                                            <span id="toggleIcon1">👁️</span>
+                                        </button>
+                                    </div>
                                     <small class="text-muted">Password must be 8-255 characters with uppercase, lowercase, number, and special character</small>
                                 </div>
                                 <div class="mb-3">
                                     <label for="confirm_password" class="form-label">Confirm New Password</label>
-                                    <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                                        <button class="btn btn-outline-secondary" type="button" data-toggle-password="confirm_password" data-toggle-icon="toggleIcon2">
+                                            <span id="toggleIcon2">👁️</span>
+                                        </button>
+                                    </div>
                                 </div>
-                                <button type="submit" class="btn btn-primary w-100">Reset Password</button>
+                                <button type="submit" class="btn btn-primary w-100" id="resetButton">
+                                    <span id="resetText">Reset Password</span>
+                                    <span id="resetSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+                                </button>
                             </form>
                         <?php endif; ?>
                     </div>
@@ -120,34 +134,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($token)) {
     </div>
     
     <script src="<?php echo APP_URL; ?>/assets/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <script src="<?php echo APP_URL; ?>/assets/js/main.js"></script>
 
-    <!-- Background slideshow: cycle uploads images behind the dark overlay -->
-    <script>
-    (function () {
-        var container = document.getElementById('bgSlideshow');
-        if (!container) return;
-        var base = '';
-        var images = [];
-        for (var n = 1; n <= 24; n++) {
-            images.push(base + 'uploads/' + n + '.jpg');
+    <script src="<?php echo APP_URL; ?>/assets/js/slideshow.js"></script>
+    <script nonce="<?php echo CSP_NONCE; ?>">
+    function togglePassword(fieldId, iconId) {
+        const field = document.getElementById(fieldId);
+        const icon = document.getElementById(iconId);
+        if (!field || !icon) return;
+        if (field.type === 'password') {
+            field.type = 'text';
+            icon.textContent = '🙈';
+        } else {
+            field.type = 'password';
+            icon.textContent = '👁️';
         }
-        images.push(base + 'uploads/glassmorphism-background.jpg');
-        var slides = [];
-        images.forEach(function (src, idx) {
-            var div = document.createElement('div');
-            div.className = 'slide' + (idx === 0 ? ' active' : '');
-            div.style.backgroundImage = 'url(' + src + ')';
-            container.appendChild(div);
-            slides.push(div);
+    }
+
+    document.getElementById('resetPasswordForm').addEventListener('submit', function(e) {
+        const resetButton = document.getElementById('resetButton');
+        const resetText = document.getElementById('resetText');
+        const resetSpinner = document.getElementById('resetSpinner');
+        const password = document.getElementById('password').value;
+        const confirmPassword = document.getElementById('confirm_password').value;
+        
+        if (password !== confirmPassword) {
+            e.preventDefault();
+            alert('Passwords do not match.');
+            return false;
+        }
+        
+        if (!navigator.onLine) {
+            e.preventDefault();
+            alert('Internet connection required. Please check your connection and try again.');
+            return false;
+        }
+        
+        resetButton.disabled = true;
+        resetText.classList.add('d-none');
+        resetSpinner.classList.remove('d-none');
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('password').focus();
+        
+        document.querySelectorAll('[data-toggle-password]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var fieldId = this.dataset.togglePassword;
+                var iconId = this.dataset.toggleIcon;
+                var field = document.getElementById(fieldId);
+                var icon = document.getElementById(iconId);
+                if (!field || !icon) return;
+                var type = field.getAttribute('type') === 'password' ? 'text' : 'password';
+                field.setAttribute('type', type);
+            });
         });
-        var current = 0;
-        setInterval(function () {
-            if (slides.length < 2) return;
-            slides[current].classList.remove('active');
-            current = (current + 1) % slides.length;
-            slides[current].classList.add('active');
-        }, 5000);
-    })();
+    });
     </script>
-</body></body>
+</body>
 </html>

@@ -2,27 +2,46 @@
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/security.php';
 
-if (!isLoggedIn() || !isset($_SESSION['temp_user']) || ($_SESSION['temp_user_type'] ?? '') !== 'treasurer') {
+if (isLoggedIn()) {
+    redirectTo('/treasurer/dashboard.php');
+}
+
+if (!isset($_SESSION['temp_user']) || ($_SESSION['temp_user_type'] ?? '') !== 'treasurer') {
     redirectTo('/treasurer/login.php');
 }
 
 $error = '';
-$success = '';
 $csrf_token = generateCsrfToken();
+
+$user = $_SESSION['temp_user'];
+$database = new Database();
+$db = $database->getConnection();
+$stmt = $db->prepare("SELECT two_fa_secret FROM members WHERE member_id = :member_id");
+$stmt->execute([':member_id' => $user['member_id']]);
+$dbUser = $stmt->fetch();
+$secret = $dbUser ? $dbUser['two_fa_secret'] : '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         $error = 'Invalid request. Please try again.';
+    } elseif (!checkRateLimit($_SESSION['temp_user']['member_id'], 5, 300, '%Failed 2FA%')) {
+        $error = 'Too many verification attempts. Please try again later.';
+        logAudit($_SESSION['temp_user']['member_id'] ?? 'system', 'Treasurer 2FA rate limit exceeded');
     } else {
-        $code = sanitizeInput($_POST['code']);
+        $code = cleanInput($_POST['code']);
         
         if (empty($code)) {
             $error = 'Please enter the verification code.';
         } else {
             $user = $_SESSION['temp_user'];
-            $secret = $user['two_fa_secret'];
+            $database = new Database();
+            $db = $database->getConnection();
+            $stmt = $db->prepare("SELECT two_fa_secret FROM members WHERE member_id = :member_id");
+            $stmt->execute([':member_id' => $user['member_id']]);
+            $dbUser = $stmt->fetch();
+            $code = preg_replace('/[^0-9]/', '', $code);
             
-            if (strlen($code) === 6 && ctype_digit($code)) {
+            if (verifyTOTP($secret, $code)) {
                 $_SESSION['user_id'] = $user['member_id'];
                 $_SESSION['user_type'] = 'treasurer';
                 $_SESSION['full_name'] = $user['full_name'];
@@ -31,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 unset($_SESSION['temp_user'], $_SESSION['temp_user_type']);
                 
                 session_regenerate_id(true);
-                logAudit($user['member_id'], 'Treasurer 2FA verification successful');
+                logAudit($user['member_id'], 'Treasurer 2FA login completed');
                 redirectTo('/treasurer/dashboard.php');
             } else {
                 $error = 'Invalid verification code.';
@@ -48,9 +67,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Two-Factor Authentication - <?php echo APP_NAME; ?></title>
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
+    <script src="<?php echo APP_URL; ?>/assets/js/header-common.js"></script>
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/css/style.css">
 </head>
 <body class="bg-light">
+    <div class="bg-slideshow" id="bgSlideshow"></div>
     <div class="container mt-5">
         <div class="row justify-content-center">
             <div class="col-md-5">
@@ -65,14 +86,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         
                         <p class="text-center">Please enter the 6-digit verification code sent to your device.</p>
                         
-                        <form method="POST" action="">
+                        <form method="POST" action="" id="twoFAForm">
                             <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                             <div class="mb-3">
                                 <label for="code" class="form-label">Verification Code</label>
                                 <input type="text" class="form-control" id="code" name="code" 
                                        placeholder="000000" maxlength="6" required autocomplete="off">
                             </div>
-                            <button type="submit" class="btn btn-primary w-100">Verify</button>
+                            <button type="submit" class="btn btn-primary w-100" id="verifyButton">
+                                <span id="verifyText">Verify</span>
+                                <span id="verifySpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+                            </button>
+                                                    <div class="text-center mt-3">
+                            <div class="qrcode-canvas" data-otpauth="<?php echo htmlspecialchars(getTOTPQRCodeUrl($secret, $_SESSION['temp_user']['email'], 'GYF Welfare', 200)); ?>" style="display:inline-block;width:200px;height:200px;"></div>
+                            <br><small class="text-muted">Scan this QR code with Google Authenticator, Authy, or any TOTP app</small>
+                        </div>
+                            <div class="text-center mt-3">
+                                <a href="<?php echo APP_URL; ?>/treasurer/login.php" class="text-muted">&larr; Back to Login</a>
+                            </div>
                         </form>
                     </div>
                 </div>
@@ -81,34 +112,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     
     <script src="<?php echo APP_URL; ?>/assets/bootstrap/js/bootstrap.bundle.min.js"></script>
-
-    <!-- Background slideshow: cycle uploads images behind the dark overlay -->
-    <script>
-    (function () {
-        var container = document.getElementById('bgSlideshow');
-        if (!container) return;
-        var base = '';
-        var images = [];
-        for (var n = 1; n <= 24; n++) {
-            images.push(base + 'uploads/' + n + '.jpg');
+    <script src="<?php echo APP_URL; ?>/assets/js/qrcode.min.js"></script> 
+      <script src="<?php echo APP_URL; ?>/assets/js/main.js"></script>
+    <script src="<?php echo APP_URL; ?>/assets/js/slideshow.js"></script>
+    <script nonce="<?php echo CSP_NONCE; ?>">
+    document.getElementById('twoFAForm').addEventListener('submit', function(e) {
+        const verifyButton = document.getElementById('verifyButton');
+        const verifyText = document.getElementById('verifyText');
+        const verifySpinner = document.getElementById('verifySpinner');
+        const code = document.getElementById('code').value.trim();
+        
+        if (!code || code.length !== 6) {
+            e.preventDefault();
+            alert('Please enter a valid 6-digit verification code.');
+            return false;
         }
-        images.push(base + 'uploads/glassmorphism-background.jpg');
-        var slides = [];
-        images.forEach(function (src, idx) {
-            var div = document.createElement('div');
-            div.className = 'slide' + (idx === 0 ? ' active' : '');
-            div.style.backgroundImage = 'url(' + src + ')';
-            container.appendChild(div);
-            slides.push(div);
-        });
-        var current = 0;
-        setInterval(function () {
-            if (slides.length < 2) return;
-            slides[current].classList.remove('active');
-            current = (current + 1) % slides.length;
-            slides[current].classList.add('active');
-        }, 5000);
-    })();
+        
+        if (!navigator.onLine) {
+            e.preventDefault();
+            alert('Internet connection required. Please check your connection and try again.');
+            return false;
+        }
+        
+        verifyButton.disabled = true;
+        verifyText.classList.add('d-none');
+        verifySpinner.classList.remove('d-none');
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('code').focus();
+    });
     </script>
-</body></body>
+</body>
 </html>

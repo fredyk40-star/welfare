@@ -14,7 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         $error = 'Invalid request. Please try again.';
     } else {
-        $input = strtolower(trim(sanitizeInput($_POST['identifier'] ?? $_POST['member_id'] ?? '')));
+        $input = strtolower(trim(cleanInput($_POST['identifier'] ?? $_POST['member_id'] ?? '')));
         
         if (empty($input)) {
             $error = 'Please enter your Member ID or Email address.';
@@ -22,20 +22,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $database = new Database();
             $db = $database->getConnection();
             
-            // Determine if input is email or member ID
-            if (filter_var($input, FILTER_VALIDATE_EMAIL)) {
-                // Treasurer flow: lookup by email (treasurer account)
-                $query = "SELECT member_id, full_name, email FROM members 
-                          WHERE LOWER(email) = :email AND member_id = 'GYF-ADMIN'";
-                $stmt = $db->prepare($query);
-                $stmt->execute([':email' => $input]);
+            if (!checkRateLimit(getClientIp(), 3, 900, '%password reset%')) {
+                $error = 'Too many password reset requests. Please try again later.';
+                logAudit('system', 'Password reset rate limit exceeded');
             } else {
-                // Member flow: lookup by member ID
+                // Determine if input is email or member ID
+                if (filter_var($input, FILTER_VALIDATE_EMAIL)) {
+                    // Treasurer flow: lookup by email (treasurer account)
                 $query = "SELECT member_id, full_name, email FROM members 
-                          WHERE member_id = :member_id AND member_id != 'GYF-ADMIN'";
+                          WHERE LOWER(email) = :email AND member_id = :treasurer_id";
                 $stmt = $db->prepare($query);
-                $stmt->execute([':member_id' => strtoupper($input)]);
-            }
+                $stmt->execute([':email' => $input, ':treasurer_id' => TREASURER_MEMBER_ID]);
+            } else {
+                $query = "SELECT member_id, full_name, email FROM members 
+                          WHERE member_id = :member_id AND member_id != :treasurer_id";
+                    $stmt = $db->prepare($query);
+                    $stmt->execute([':member_id' => strtoupper($input), ':treasurer_id' => TREASURER_MEMBER_ID]);
+                }
             
             $user = $stmt->fetch();
             
@@ -52,7 +55,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $token = bin2hex(random_bytes(32));
                     $expires = date('Y-m-d H:i:s', time() + 3600);
                     
-                    $token_query = "INSERT INTO password_resets (member_id, token, expires_at) 
+                    $cleanup_query = "DELETE FROM password_resets WHERE expires_at < NOW()";
+                    $db->exec($cleanup_query);
+                    
+                    $token_query = "INSERT INTO password_resets (member_id, token, expires_at) ;
                                     VALUES (:member_id, :token, :expires)";
                     $token_stmt = $db->prepare($token_query);
                     $token_stmt->execute([
@@ -66,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $reset_link = APP_URL . '/member/reset-password.php?token=' . $token;
                     $subject = 'Password Reset - ' . APP_NAME;
                     $safe_full_name = sanitizeEmailValue($user['full_name']);
-                    $message = "
+                    $message = ";
                     <html>
                     <head>
                         <title>Password Reset</title>
@@ -86,19 +92,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (sendEmail($user['email'], $subject, $message)) {
                         $success = 'Password reset link has been sent to your email address. Please check your inbox.';
                     } else {
-                        $success = "Password reset link generated. <br><br>";
-                        $success .= "<strong>Note:</strong> Email could not be sent. <a href='$reset_link'>Click here to reset your password</a>";
+                        error_log("Password reset email failed for {$user['member_id']}. Check Resend configuration.");
+                        $success = 'Password reset link generated. If email delivery fails, please contact support.';
                     }
                 }
             } else {
-                if (filter_var($input, FILTER_VALIDATE_EMAIL)) {
-                    $error = 'No treasurer account found with that email address.';
-                } else {
-                    $error = 'No member found with that Member ID.';
-                }
+                $error = 'If an account exists with that identifier, a password reset link will be sent.';
             }
         }
     }
+}
 }
 ?>
 <!DOCTYPE html>
@@ -108,6 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Forgot Password - <?php echo APP_NAME; ?></title>
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
+    <script src="<?php echo APP_URL; ?>/assets/js/auth-common.js"></script>
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/css/style.css">
 </head>
 <body>
@@ -130,18 +134,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 <a href="login.php" class="btn btn-primary mt-3">Back to Login</a>
                             </div>
                         <?php else: ?>
-                            <form method="POST" action="">
+                            <form method="POST" action="" id="forgotForm">
                                 <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                                 <div class="mb-3">
                                     <label for="identifier" class="form-label">Member ID or Email Address</label>
                                     <input type="text" class="form-control" id="identifier" name="identifier" 
-                                           placeholder="Enter your Member ID (e.g., GYF-123456) or Email" required>
+                                           placeholder="Enter your Member ID (e.g., GYF-123456) or Email" required
+                                           value="<?php echo htmlspecialchars($input ?? '', ENT_QUOTES, 'UTF-8'); ?>">
                                     <small class="text-muted">
                                         Members: Enter your Member ID<br>
                                         Treasurer: Enter your registered email address
                                     </small>
                                 </div>
-                                <button type="submit" class="btn btn-primary w-100">Send Reset Link</button>
+                                <button type="submit" class="btn btn-primary w-100" id="resetButton">
+                                    <span id="resetText">Send Reset Link</span>
+                                    <span id="resetSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+                                </button>
                             </form>
                             <div class="mt-3 text-center">
                                 <a href="login.php" class="text-decoration-none">Back to Login</a>
@@ -154,34 +162,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     
     <script src="<?php echo APP_URL; ?>/assets/bootstrap/js/bootstrap.bundle.min.js"></script>
-
-    <!-- Background slideshow: cycle uploads images behind the dark overlay -->
-    <script>
-    (function () {
-        var container = document.getElementById('bgSlideshow');
-        if (!container) return;
-        var base = '';
-        var images = [];
-        for (var n = 1; n <= 24; n++) {
-            images.push(base + 'uploads/' + n + '.jpg');
+    <script src="<?php echo APP_URL; ?>/assets/js/main.js"></script>
+    <script nonce="<?php echo CSP_NONCE; ?>">
+    document.getElementById('forgotForm').addEventListener('submit', function(e) {
+        const resetButton = document.getElementById('resetButton');
+        const resetText = document.getElementById('resetText');
+        const resetSpinner = document.getElementById('resetSpinner');
+        const identifier = document.getElementById('identifier').value.trim();
+        
+        if (!identifier) {
+            e.preventDefault();
+            alert('Please enter your Member ID or Email address.');
+            return false;
         }
-        images.push(base + 'uploads/glassmorphism-background.jpg');
-        var slides = [];
-        images.forEach(function (src, idx) {
-            var div = document.createElement('div');
-            div.className = 'slide' + (idx === 0 ? ' active' : '');
-            div.style.backgroundImage = 'url(' + src + ')';
-            container.appendChild(div);
-            slides.push(div);
-        });
-        var current = 0;
-        setInterval(function () {
-            if (slides.length < 2) return;
-            slides[current].classList.remove('active');
-            current = (current + 1) % slides.length;
-            slides[current].classList.add('active');
-        }, 5000);
-    })();
+        
+        if (!navigator.onLine) {
+            e.preventDefault();
+            alert('Internet connection required. Please check your connection and try again.');
+            return false;
+        }
+        
+        resetButton.disabled = true;
+        resetText.classList.add('d-none');
+        resetSpinner.classList.remove('d-none');
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('identifier').focus();
+    });
+
+    if (window.history.replaceState) {
+        window.history.replaceState(null, null, window.location.href);
+    }
+
+    window.addEventListener('pageshow', function() {
+        document.getElementById('forgotForm').reset();
+    });
     </script>
-</body></body>
+
+    <script src="<?php echo APP_URL; ?>/assets/js/slideshow.js"></script>
+</body>
 </html>

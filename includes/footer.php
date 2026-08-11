@@ -11,7 +11,7 @@
                     <small style="color: var(--text-muted);">
                         Welfare Management System v1.0 | 
                         <?php if (isLoggedIn()): ?>
-                            Logged in as: <strong style="color: var(--text-secondary);"><?php echo $_SESSION['user_id']; ?></strong>
+                            Logged in as: <strong style="color: var(--text-secondary);"><?php echo htmlspecialchars($_SESSION['user_id'] ?? ''); ?></strong>
                         <?php endif; ?>
                     </small>
                 </div>
@@ -21,11 +21,12 @@
     
     <!-- Scripts (version-busted so stale cached Bootstrap can never execute) -->
     <script src="<?php echo APP_URL; ?>/assets/bootstrap/js/bootstrap.bundle.min.js?v=20260807"></script>
+    <script src="<?php echo APP_URL; ?>/assets/js/qrcode.min.js"></script>
     <script src="<?php echo APP_URL; ?>/assets/js/main.js?v=20260807"></script>
     <script src="<?php echo APP_URL; ?>/assets/js/validation.js?v=20260807"></script>
     
     <!-- Online Status Check -->
-    <script>
+<script nonce="<?php echo CSP_NONCE; ?>">
         // Check online status before form submissions
         document.addEventListener('submit', function(e) {
             if (!navigator.onLine) {
@@ -53,70 +54,37 @@
         updateOnlineStatus();
     </script>
 
-    <!-- Global background slideshow: cycle uploads images behind the dark overlay -->
-    <script>
-    (function () {
-        var container = document.getElementById('bgSlideshow');
-        if (!container) return;
+    <script src="<?php echo APP_URL; ?>/assets/js/slideshow.js"></script>
+    <script src="<?php echo APP_URL; ?>/assets/js/modal-failsafe.js"></script>
 
-        var base = '<?php echo APP_URL; ?>/';
-
-        var images = [];
-        for (var n = 1; n <= 24; n++) {
-            images.push(base + 'uploads/' + n + '.jpg');
-        }
-        images.push(base + 'uploads/glassmorphism-background.jpg');
-
-        var slides = [];
-        images.forEach(function (src, idx) {
-            var div = document.createElement('div');
-            div.className = 'slide' + (idx === 0 ? ' active' : '');
-            div.style.backgroundImage = 'url(' + src + ')';
-            container.appendChild(div);
-            slides.push(div);
+<script nonce="<?php echo CSP_NONCE; ?>">
+document.addEventListener('DOMContentLoaded', function() {
+    var logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', function() {
+            var formData = new FormData();
+            formData.append('csrf_token', '<?php echo htmlspecialchars(generateCsrfToken()); ?>');
+            fetch('<?php echo APP_URL; ?>/api/auth.php?action=logout', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'Accept': 'application/json'
+                }
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.redirect) {
+                    window.location.href = data.redirect;
+                } else {
+                    window.location.href = '<?php echo APP_URL; ?>/index.html';
+                }
+            })
+            .catch(function() {
+                window.location.href = '<?php echo APP_URL; ?>/index.html';
+            });
         });
-
-        var current = 0;
-        setInterval(function () {
-            if (slides.length < 2) return;
-            slides[current].classList.remove('active');
-            current = (current + 1) % slides.length;
-            slides[current].classList.add('active');
-        }, 5000);
-    })();
-    </script>
-        <!-- Modal failsafe: force-clean stuck backdrops / modal-open / overflow lock -->
-    <script>
-    (function() {
-        function cleanupModalBackdrops() {
-            document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
-            document.body.classList.remove('modal-open');
-            document.body.style.overflow = '';
-            document.body.style.paddingRight = '';
-        }
-
-        // Catch ALL hidden.bs.modal events via event delegation (covers dynamically created modals too)
-        document.addEventListener('hidden.bs.modal', function(e) {
-            if (!document.querySelector('.modal.show')) {
-                cleanupModalBackdrops();
-            }
-        });
-
-        // Backdrop-click / ESC fallback: Bootstrap should fire hidden.bs.modal, but if it doesn't,
-        // catch the click on the backdrop itself and clean up after a short delay
-        document.addEventListener('click', function(e) {
-            if (e.target.classList.contains('modal-backdrop')) {
-                setTimeout(cleanupModalBackdrops, 50);
-            }
-        });
-
-        // Final safety net on page load: clean up any stuck backdrops from a previous interrupted state
-        window.addEventListener('load', function() {
-            setTimeout(cleanupModalBackdrops, 100);
-        });
-    })();
-    </script>
-
-</body>
+    }
+});
+</script></body>
 </html>
 

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -43,7 +43,6 @@
                             📝 Member Registration
                         </a>
                         <a href="treasurer/login.php" class="btn btn-warning btn-lg">
-                            💼 Treasurer Access
                         </a>
                     </div>
                     
@@ -85,13 +84,6 @@
     <script>
         // Update copyright year
         document.getElementById('currentYear').textContent = new Date().getFullYear();
-
-        // Replace any old service worker with a self-destructing one that
-        // purges all caches and unregisters itself (no offline caching).
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('service-worker.js', { scope: './' })
-                .catch(function () {});
-        }
     </script>
 
 
@@ -100,27 +92,89 @@
     (function () {
         var container = document.getElementById('bgSlideshow');
         if (!container) return;
-        var base = '';
+        var base = location.pathname.substring(0, location.pathname.lastIndexOf('/') + 1);
         var images = [];
-        for (var n = 1; n <= 24; n++) {
-            images.push(base + 'uploads/' + n + '.jpg');
-        }
         images.push(base + 'uploads/glassmorphism-background.jpg');
         var slides = [];
-        images.forEach(function (src, idx) {
+        var current = 0;
+        var interval = 5000;
+        var timer = null;
+        var loadedCount = 0;
+
+        function createSlide(src, idx) {
             var div = document.createElement('div');
             div.className = 'slide' + (idx === 0 ? ' active' : '');
             div.style.backgroundImage = 'url(' + src + ')';
             container.appendChild(div);
             slides.push(div);
-        });
-        var current = 0;
-        setInterval(function () {
+            loadedCount++;
+        }
+
+        function startAutoplay() {
+            stopAutoplay();
+            timer = setInterval(next, interval);
+        }
+
+        function stopAutoplay() {
+            if (timer) {
+                clearInterval(timer);
+                timer = null;
+            }
+        }
+
+        function next() {
             if (slides.length < 2) return;
             slides[current].classList.remove('active');
             current = (current + 1) % slides.length;
             slides[current].classList.add('active');
-        }, 5000);
+        }
+
+        function prev() {
+            if (slides.length < 2) return;
+            slides[current].classList.remove('active');
+            current = (current - 1 + slides.length) % slides.length;
+            slides[current].classList.add('active');
+        }
+
+        // Lazy-load images in chunks to reduce mobile startup cost.
+        // Priority: first image immediately, then the rest in small batches.
+        function loadBatch(start, count) {
+            var end = Math.min(start + count, images.length);
+            for (var i = start; i < end; i++) {
+                createSlide(images[i], i);
+            }
+            if (end < images.length) {
+                setTimeout(function () { loadBatch(end, count); }, 150);
+            } else {
+                startAutoplay();
+            }
+        }
+
+        // Touch swipe support
+        var touchStartX = 0;
+        var touchEndX = 0;
+        var swipeThreshold = 50;
+
+        container.addEventListener('touchstart', function (e) {
+            touchStartX = e.changedTouches[0].screenX;
+            stopAutoplay();
+        }, { passive: true });
+
+        container.addEventListener('touchend', function (e) {
+            touchEndX = e.changedTouches[0].screenX;
+            var diff = touchStartX - touchEndX;
+            if (Math.abs(diff) > swipeThreshold) {
+                if (diff > 0) {
+                    next();
+                } else {
+                    prev();
+                }
+            }
+            startAutoplay();
+        }, { passive: true });
+
+        // Start: load first image now, then the rest in batches
+        loadBatch(0, 1);
     })();
     </script>
 </html>

@@ -18,7 +18,7 @@ RewriteRule ^(.*)$ $1.php [NC,L]
     Header set X-XSS-Protection "1; mode=block"
     Header set Referrer-Policy "strict-origin-when-cross-origin"
     Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
-    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 </IfModule>
 
 # Hide Apache version (must also set ServerTokens Prod in httpd.conf)
@@ -36,12 +36,11 @@ RewriteRule ^(.*)$ $1.php [NC,L]
 Options -Indexes
 
 # Protect sensitive files
-<FilesMatch "\.(env|config|sql|log|htaccess)$">
-    Order Allow,Deny
-    Deny from all
+<FilesMatch "\.(env|config|sql|log|htaccess|json)$">
+    Require all denied
 </FilesMatch>
 
-# Protect includes directory
+# Protect includes and config directories
 <IfModule mod_rewrite.c>
     RewriteRule ^includes/ - [F,L]
     RewriteRule ^config/ - [F,L]
@@ -50,12 +49,13 @@ Options -Indexes
 # Set default charset
 AddDefaultCharset UTF-8
 
-# Enable CORS for API (same origin only)
+# Enable CORS for API (same origin only) - restrict to actual origin in production
 <IfModule mod_headers.c>
     <FilesMatch "api/.*\.php$">
         Header set Access-Control-Allow-Origin "http://localhost"
         Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
-        Header set Access-Control-Allow-Headers "Content-Type"
+        Header set Access-Control-Allow-Headers "Content-Type, X-CSRF-Token"
+        Header set Access-Control-Max-Age "86400"
     </FilesMatch>
 </IfModule>
 
@@ -88,4 +88,16 @@ AddDefaultCharset UTF-8
     AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript
     AddOutputFilterByType DEFLATE application/javascript application/x-javascript
     AddOutputFilterByType DEFLATE application/json
+</IfModule>
+
+# Disable PHP error display in production
+<IfModule mod_php7.c>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_value error_reporting 0
+</IfModule>
+<IfModule mod_php8.c>
+    php_flag display_errors Off
+    php_flag display_startup_errors Off
+    php_value error_reporting 0
 </IfModule>

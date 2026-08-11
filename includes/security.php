@@ -1,19 +1,37 @@
 <?php
-// Content Security Policy
-$csp = "default-src 'self'; " .
-       "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " .
+// ensures session is started and functions.php is loaded
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+// Content Security Policy with nonce for inline scripts
+$nonce = base64_encode(random_bytes(16));
+    $csp = "default-src 'self'; " .
+       "script-src 'self' 'nonce-" . $nonce . "' https://cdn.jsdelivr.net; " .
        "style-src 'self' 'unsafe-inline'; " .
        "font-src 'self' data:; " .
-       "img-src 'self' data:; " .
-       "connect-src 'self'; " .
+       "img-src 'self' data: blob:; " .
+       "connect-src 'self' https://cdn.jsdelivr.net; " .
        "form-action 'self'; " .
        "frame-ancestors 'none';";
 header("Content-Security-Policy: " . $csp);
 
+define('CSP_NONCE', $nonce);
+
 header_remove('X-Powered-By');
+// Prevent mobile proxies / bfcache from serving stale Bootstrap JS or HTML,
+// which is what broke the navbar toggler until a hard refresh.
+header('Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+header('X-Frame-Options: DENY');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: strict-origin-when-cross-origin');
+header('X-XSS-Protection: 1; mode=block');
+header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
 
 if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
-    header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+    header('Strict-Transport-Security: max-age=31536000; includeSubDomains; preload');
 }
 
 // CSRF Token Generation
@@ -28,32 +46,168 @@ function validateCsrfToken($token) {
     return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
 }
 
-// Rate Limiting for Login
-function checkRateLimit($identifier, $max_attempts = 5, $timeframe = 900) {
+/**
+ * Get client IP address with proper proxy handling
+ * @return string
+ */
+function getClientIp() {
+    $direct_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    
+    $trusted_proxies = array_filter(array_map('trim', explode(',', getenv('TRUSTED_PROXIES') ?: '')));
+    $is_trusted_proxy = in_array($direct_ip, $trusted_proxies, true);
+    
+    if ($is_trusted_proxy) {
+        $ip_keys = ['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'HTTP_X_REAL_IP', 'HTTP_CLIENT_IP'];
+        foreach ($ip_keys as $key) {
+            if (!empty($_SERVER[$key])) {
+                $ip = $_SERVER[$key];
+                $ips = explode(',', $ip);
+                $ip = trim($ips[0]);
+                if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                    return $ip;
+                }
+            }
+        }
+    }
+    
+    if (filter_var($direct_ip, FILTER_VALIDATE_IP)) {
+        return $direct_ip;
+    }
+    
+    return 'unknown';
+}
+
+// Rate Limiting
+function checkRateLimit($identifier, $max_attempts = 5, $timeframe = 900, $action_pattern = '%login attempt%') {
     $database = new Database();
     $db = $database->getConnection();
     
-    $query = "SELECT COUNT(*) as attempts, MAX(timestamp) as last_attempt 
+    $ip_address = getClientIp();
+    
+    // Determine the rate-limit key:
+    // - Numeric identifier → use as user_id directly
+    // - Non-empty string identifier → use as user_id (supports member IDs like "GYF-12345",
+    //   hashed emails, etc.)
+    // - Empty/null identifier → fall back to IP address
+    $is_numeric_id = isset($identifier) && ctype_digit((string)$identifier);
+    $is_string_id = isset($identifier) && is_string($identifier) && $identifier !== '';
+    
+    if ($is_numeric_id || $is_string_id) {
+        $where_clause = 'user_id = :identifier';
+        $bind_value = (string)$identifier;
+    } else {
+        $where_clause = 'ip_address = :identifier';
+        $bind_value = $ip_address;
+    }
+    
+    $query = "SELECT COUNT(*) as attempts, MAX(timestamp) as last_attempt
               FROM audit_logs 
               WHERE action LIKE :action_pattern 
-              AND ip_address = :ip 
+              AND $where_clause
               AND timestamp >= DATE_SUB(NOW(), INTERVAL :timeframe SECOND)";
     
     $stmt = $db->prepare($query);
     $stmt->execute([
-        ':action_pattern' => '%login attempt%',
-        ':ip' => $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'],
+        ':action_pattern' => $action_pattern,
+        ':identifier' => $bind_value,
         ':timeframe' => $timeframe
     ]);
     
     $result = $stmt->fetch();
     
-    if ($result['attempts'] >= $max_attempts) {
-        $time_since_last = time() - strtotime($result['last_attempt']);
-        if ($time_since_last < $timeframe) {
+    if ($result && $result['attempts'] >= $max_attempts) {
+        $last_attempt = strtotime($result['last_attempt']);
+        if ($last_attempt !== false && (time() - $last_attempt) < $timeframe) {
+            // Log the rate-limit event for audit trail
+            if (function_exists('logAudit')) {
+                logAudit($is_numeric_id ? $bind_value : null, "RATE_LIMIT_EXCEEDED: $action_pattern");
+            }
             return false;
         }
     }
     
     return true;
 }
+
+function checkAccountLockout($identifier, $max_attempts = 5, $lockout_timeframes = [900, 3600, 86400]) {
+    if (!class_exists('Database')) {
+        require_once __DIR__ . '/../config/database.php';
+    }
+    
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $ip_address = getClientIp();
+    $bind_value = is_string($identifier) && $identifier !== '' ? (string)$identifier : $ip_address;
+    $where_clause = is_string($identifier) && $identifier !== '' ? 'user_id = :identifier' : 'ip_address = :identifier';
+    
+    $lockout_level = 0;
+    $locked_until = 0;
+    
+    foreach ($lockout_timeframes as $index => $timeframe) {
+        $query = "SELECT COUNT(*) as attempts, MAX(timestamp) as last_attempt
+                  FROM audit_logs 
+                  WHERE action LIKE '%login%' AND action NOT LIKE '%success%'
+                  AND $where_clause
+                  AND timestamp >= DATE_SUB(NOW(), INTERVAL :timeframe SECOND)";
+        
+        $stmt = $db->prepare($query);
+        $stmt->execute([
+            ':identifier' => $bind_value,
+            ':timeframe' => $timeframe
+        ]);
+        
+        $result = $stmt->fetch();
+        
+        if ($result && $result['attempts'] >= $max_attempts) {
+            $lockout_level = $index + 1;
+            $last_attempt = strtotime($result['last_attempt']);
+            if ($last_attempt !== false) {
+                $locked_until = max($locked_until, $last_attempt + $timeframe);
+            }
+        }
+    }
+    
+    if ($lockout_level > 0 && time() < $locked_until) {
+        return [
+            'locked' => true,
+            'level' => $lockout_level,
+            'remaining' => $locked_until - time()
+        ];
+    }
+    
+    return ['locked' => false];
+}
+
+// Session Security
+function regenerateSession() {
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_regenerate_id(true);
+    }
+}
+
+function destroySession() {
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000,
+                $params['path'], $params['domain'],
+                $params['secure'], $params['httponly']
+            );
+        }
+        session_destroy();
+    }
+}
+
+function logout($redirect = '../member/login.php') {
+    destroySession();
+    // Validate redirect URL against allowlist
+    $safe_redirects = ['/index.html', '/member/login.php', '/treasurer/login.php'];
+    if (!in_array($redirect, $safe_redirects)) {
+        $redirect = '/index.html'; // Default to safe redirect;
+    }
+    header('Location: ' . APP_URL . $redirect);
+    exit();
+}
+

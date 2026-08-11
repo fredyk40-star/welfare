@@ -98,6 +98,10 @@ body {
     height: 100%;
     z-index: -3;
     overflow: hidden;
+    -webkit-transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
 }
 
 .bg-slideshow .slide {
@@ -111,6 +115,7 @@ body {
     background-repeat: no-repeat;
     opacity: 0;
     transition: opacity 1.5s ease-in-out;
+    will-change: opacity;
 }
 
 .bg-slideshow .slide.active {
@@ -1329,4 +1334,16 @@ hr {
     .modal-dialog .modal-content {
         max-height: calc(100vh - 50px);
     }
+}
+
+/* Browser compatibility overrides for Bootstrap's WebKit-prefixed rules */
+body {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+th {
+    text-align: inherit;
+    text-align: -webkit-match-parent;
+    text-align: match-parent;
 }

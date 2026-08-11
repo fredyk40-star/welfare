@@ -2,10 +2,12 @@
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/security.php';
 
+header('Content-Type: application/json');
+
 $database = new Database();
 $db = $database->getConnection();
 
-$action = isset($_GET['action']) ? $_GET['action'] : '';
+$action = isset($_GET['action']) ? cleanInput($_GET['action']) : '';
 
 switch ($action) {
     case 'check_duplicate':
@@ -13,16 +15,20 @@ switch ($action) {
             echo json_encode(['success' => false, 'message' => 'Access denied']);
             exit();
         }
-        $member_id = sanitizeInput($_GET['member_id'] ?? '');
+        if (!checkRateLimit($_SESSION['user_id'] ?? getClientIp(), 10, 60, '%check_duplicate%')) {
+            echo json_encode(['success' => false, 'message' => 'Too many requests. Please try again later.']);
+            exit();
+        }
+        $member_id = cleanInput($_GET['member_id'] ?? '');
         $month = (int) ($_GET['month'] ?? 0);
         $year = (int) ($_GET['year'] ?? 0);
 
         if (!$member_id || !$month || !$year) {
-            echo json_encode(['success' => true, 'exists' => false]);
+            echo json_encode(['success' => false, 'message' => 'Missing required parameters', 'exists' => false]);
             exit();
         }
 
-        $stmt = $db->prepare("SELECT receipt_no FROM transactions WHERE member_id = :mid AND billing_cycle_month = :m AND billing_cycle_year = :y LIMIT 1");
+        $stmt = $db->prepare("SELECT receipt_no FROM transactions WHERE member_id = :mid AND billing_cycle_month = :m AND billing_cycle_year = :y AND status != 'void' LIMIT 1");
         $stmt->execute([':mid' => $member_id, ':m' => $month, ':y' => $year]);
         $row = $stmt->fetch();
 
@@ -37,11 +43,47 @@ switch ($action) {
         } else {
             echo json_encode(['success' => true, 'exists' => false]);
         }
-        break;
+        exit();
+
+    case 'details':
+        if (!isLoggedIn()) {
+            echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+            exit();
+        }
+        $transaction_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+        if (!$transaction_id) {
+            echo json_encode(['success' => false, 'message' => 'Invalid transaction ID']);
+            exit();
+        }
+        $query = "SELECT t.id, t.receipt_no, t.member_id, t.treasurer_id, t.amount, t.payment_method, t.billing_cycle_month, t.billing_cycle_year, t.notes, t.status, t.transaction_date, m.full_name, m.member_id as m_id 
+                  FROM transactions t 
+                  JOIN members m ON t.member_id = m.member_id 
+                  WHERE t.id = :id";
+        $stmt = $db->prepare($query);
+        $stmt->execute([':id' => $transaction_id]);
+        $transaction = $stmt->fetch();
+        if ($transaction) {
+            if ($_SESSION['user_type'] !== 'treasurer' && $_SESSION['user_id'] !== $transaction['m_id']) {
+                echo json_encode(['success' => false, 'message' => 'Access denied']);
+                exit();
+            }
+            // Whitelist response fields to avoid leaking internal data
+            $allowed = ['id', 'receipt_no', 'member_id', 'amount', 'payment_method', 'billing_cycle_month', 'billing_cycle_year', 'notes', 'status', 'transaction_date', 'full_name'];
+            $safe = array_intersect_key($transaction, array_flip($allowed));
+            echo json_encode(['success' => true, 'transaction' => $safe]);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Transaction not found']);
+        }
+        exit();
 
     case 'receipt':
         if (!isLoggedIn()) {
-            die('Unauthorized');
+            echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+            exit();
+        }
+        if (!validateCsrfToken($_GET['csrf_token'] ?? '')) {
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+            exit();
         }
         
         $transaction_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
@@ -54,84 +96,31 @@ switch ($action) {
         $stmt->execute([':id' => $transaction_id]);
         $transaction = $stmt->fetch();
         
-        if ($transaction) {
-            // Only allow viewing if treasurer or transaction owner
-            if ($_SESSION['user_type'] !== 'treasurer' && $_SESSION['user_id'] !== $transaction['m_id']) {
-                die('Unauthorized');
-            }
-            ?>
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Receipt <?php echo $transaction['receipt_no']; ?></title>
-                <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
-                <style>
-                    body { padding: 20px; }
-                    @media print {
-                        .no-print { display: none; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="receipt">
-                        <div class="text-center mb-4">
-                            <h3>GYF Welfare Management System</h3>
-                            <h4>Payment Receipt</h4>
-                        </div>
-                        
-                        <table class="table table-bordered">
-                            <tr>
-                                <td><strong>Receipt No:</strong></td>
-                                <td><?php echo htmlspecialchars($transaction['receipt_no']); ?></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Member:</strong></td>
-                                <td><?php echo htmlspecialchars($transaction['full_name']); ?> (<?php echo $transaction['m_id']; ?>)</td>
-                            </tr>
-                            <tr>
-                                <td><strong>Amount:</strong></td>
-                                <td>GH₵ <?php echo number_format($transaction['amount'], 2); ?></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Payment Method:</strong></td>
-                                <td><?php echo $transaction['payment_method']; ?></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Billing Period:</strong></td>
-                                <td>
-                                    <?php 
-                                    if ($transaction['billing_cycle_month']) {
-                                        echo date('F Y', mktime(0, 0, 0, $transaction['billing_cycle_month'], 1, $transaction['billing_cycle_year']));
-                                    } else {
-                                        echo $transaction['billing_cycle_year'];
-                                    }
-                                    ?>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td><strong>Date:</strong></td>
-                                <td><?php echo date('F j, Y g:i A', strtotime($transaction['transaction_date'])); ?></td>
-                            </tr>
-                        </table>
-                        
-                        <div class="text-center mt-4">
-                            <button class="btn btn-primary no-print" onclick="window.print()">Print Receipt</button>
-                        </div>
-                    </div>
-                </div>
-            </body>
-            </html>
-            <?php
+        if (!$transaction) {
+            echo json_encode(['success' => false, 'message' => 'Transaction not found']);
+            exit();
         }
-        break;
+        
+        // Only allow viewing if treasurer or transaction owner
+        if ($_SESSION['user_type'] !== 'treasurer' && $_SESSION['user_id'] !== $transaction['m_id']) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit();
+        }
+        
+        renderReceipt($transaction, true, true);
+        exit();
         
     case 'member_receipt':
         if (!isMember()) {
-            die('Unauthorized');
+            echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+            exit();
+        }
+        if (!validateCsrfToken($_GET['csrf_token'] ?? '')) {
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+            exit();
         }
         
-        $receipt_no = sanitizeInput($_GET['receipt_no']);
+        $receipt_no = cleanInput($_GET['receipt_no']);
         
         $query = "SELECT t.*, m.full_name 
                   FROM transactions t 
@@ -144,73 +133,39 @@ switch ($action) {
         ]);
         $transaction = $stmt->fetch();
 
-        if ($transaction) {
-            if (isset($_GET['download'])) {
-                header('Content-Disposition: attachment; filename="receipt_' . $receipt_no . '.html"');
-            }
-            // Display receipt (same as above)
-            ?>
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Receipt <?php echo htmlspecialchars($receipt_no); ?></title>
-                <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
-                <style>
-                    body { padding: 20px; }
-                    @media print {
-                        .no-print { display: none; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="receipt">
-                        <div class="text-center mb-4">
-                            <h3>GYF Welfare Management System</h3>
-                            <h4>Payment Receipt</h4>
-                        </div>
-                        
-                        <table class="table table-bordered">
-                            <tr>
-                                <td><strong>Receipt No:</strong></td>
-                                <td><?php echo htmlspecialchars($transaction['receipt_no']); ?></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Member:</strong></td>
-                                <td><?php echo htmlspecialchars($transaction['full_name']); ?></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Amount:</strong></td>
-                                <td>GH₵ <?php echo number_format($transaction['amount'], 2); ?></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Payment Method:</strong></td>
-                                <td><?php echo $transaction['payment_method']; ?></td>
-                            </tr>
-                            <tr>
-                                <td><strong>Date:</strong></td>
-                                <td><?php echo date('F j, Y g:i A', strtotime($transaction['transaction_date'])); ?></td>
-                            </tr>
-                        </table>
-                        
-                        <div class="text-center mt-4">
-                            <button class="btn btn-primary no-print" onclick="window.print()">Print Receipt</button>
-                        </div>
-                    </div>
-                </div>
-            </body>
-            </html>
-            <?php
+        if (!$transaction) {
+            echo json_encode(['success' => false, 'message' => 'Receipt not found']);
+            exit();
         }
-        break;
+        
+        if (isset($_GET['download'])) {
+            // Sanitize filename for header
+            $safe_filename = preg_replace('/[^a-zA-Z0-9_-]/', '_', $receipt_no);
+            header('Content-Disposition: attachment; filename="receipt_' . $safe_filename . '.html"');
+        }
+        renderReceipt($transaction, false, false);
+        exit();
         
     case 'export_csv':
         if (!isLoggedIn()) {
-            die('Unauthorized');
+            echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+            exit();
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+            exit();
+        }
+        if (!checkRateLimit($_SESSION['user_id'] ?? getClientIp(), 5, 60, '%export_csv%')) {
+            echo json_encode(['success' => false, 'message' => 'Rate limit exceeded. Please try again later.']);
+            exit();
+        }
+        if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+            exit();
         }
         
-        // Set headers for CSV download
-        header('Content-Type: text/csv');
+        // Set headers for CSV download - must be before any output
+        header('Content-Type: text/csv; charset=UTF-8');
         header('Content-Disposition: attachment; filename="transactions_' . date('Y-m-d') . '.csv"');
         
         $output = fopen('php://output', 'w');
@@ -218,22 +173,7 @@ switch ($action) {
         // Add CSV headers
         fputcsv($output, ['Receipt No', 'Member', 'Amount', 'Method', 'Billing Period', 'Date']);
         
-        // Get transactions based on user type
-        if ($_SESSION['user_type'] === 'treasurer') {
-            $query = "SELECT t.*, m.full_name 
-                      FROM transactions t 
-                      JOIN members m ON t.member_id = m.member_id 
-                      ORDER BY t.transaction_date DESC";
-            $stmt = $db->query($query);
-        } else {
-            $query = "SELECT t.*, m.full_name 
-                      FROM transactions t 
-                      JOIN members m ON t.member_id = m.member_id 
-                      WHERE t.member_id = :member_id 
-                      ORDER BY t.transaction_date DESC";
-            $stmt = $db->prepare($query);
-            $stmt->execute([':member_id' => $_SESSION['user_id']]);
-        }
+        $stmt = buildTransactionFilter($db);
         
         while ($row = $stmt->fetch()) {
             fputcsv($output, [
@@ -241,7 +181,7 @@ switch ($action) {
                 $row['full_name'],
                 $row['amount'],
                 $row['payment_method'],
-                $row['billing_cycle_month'] ? date('M Y', mktime(0, 0, 0, $row['billing_cycle_month'], 1, $row['billing_cycle_year'])) : $row['billing_cycle_year'],
+                $row['billing_cycle_month'] ? formatBillingPeriod($row['billing_cycle_month'], $row['billing_cycle_year']) : $row['billing_cycle_year'],
                 $row['transaction_date']
             ]);
         }
@@ -251,29 +191,25 @@ switch ($action) {
         
     case 'export_pdf':
         if (!isLoggedIn()) {
-            die('Unauthorized');
+            echo json_encode(['success' => false, 'message' => 'Unauthorized']);
+            exit();
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+            exit();
+        }
+        if (!checkRateLimit($_SESSION['user_id'] ?? getClientIp(), 5, 60, '%export_pdf%')) {
+            echo json_encode(['success' => false, 'message' => 'Rate limit exceeded. Please try again later.']);
+            exit();
+        }
+        if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+            exit();
         }
         
-        // Get transactions based on user type
-        if ($_SESSION['user_type'] === 'treasurer') {
-            $query = "SELECT t.*, m.full_name, m.member_id as m_id 
-                      FROM transactions t 
-                      JOIN members m ON t.member_id = m.member_id 
-                      ORDER BY t.transaction_date DESC";
-            $stmt = $db->query($query);
-            $transactions = $stmt->fetchAll();
-            $title = 'All Transactions - GYF Welfare';
-        } else {
-            $query = "SELECT t.*, m.full_name 
-                      FROM transactions t 
-                      JOIN members m ON t.member_id = m.member_id 
-                      WHERE t.member_id = :member_id 
-                      ORDER BY t.transaction_date DESC";
-            $stmt = $db->prepare($query);
-            $stmt->execute([':member_id' => $_SESSION['user_id']]);
-            $transactions = $stmt->fetchAll();
-            $title = 'My Transactions - GYF Welfare';
-        }
+        $stmt = buildTransactionFilter($db);
+        $transactions = $stmt->fetchAll();
+        $title = ($_SESSION['user_type'] ?? 'member') === 'treasurer' ? 'All Transactions - GYF Welfare' : 'My Transactions - GYF Welfare';
         
         // Generate print-friendly HTML for PDF export
         header('Content-Type: text/html; charset=UTF-8');
@@ -281,7 +217,7 @@ switch ($action) {
         <!DOCTYPE html>
         <html>
         <head>
-            <title><?php echo $title; ?></title>
+            <title><?php echo htmlspecialchars($title); ?></title>
             <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
             <style>
                 body { padding: 20px; }
@@ -298,16 +234,11 @@ switch ($action) {
                 }
             </style>
         </head>
-                <body>
-                <?php if (isset($_GET['print'])): ?>
-                <script>
-                    window.onload = function() { window.print(); };
-                </script>
-                <?php endif; ?>
-                <div class="container">
+        <body>
+            <div class="container">
                 <div class="d-flex justify-content-between align-items-center mb-4">
-                    <h2><?php echo $title; ?></h2>
-                    <button class="btn btn-primary no-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+                    <h2><?php echo htmlspecialchars($title); ?></h2>
+                    <button class="btn btn-primary no-print" id="printBtn">🖨️ Print / Save as PDF</button>
                 </div>
                 
                 <?php if (empty($transactions)): ?>
@@ -324,8 +255,8 @@ switch ($action) {
                                 <div class="col-md-6 text-md-end">
                                     <strong>Payment Method:</strong> <?php echo htmlspecialchars($row['payment_method']); ?><br>
                                     <strong>Billing Period:</strong> 
-                                        <?php echo $row['billing_cycle_month'] ? date('F Y', mktime(0, 0, 0, $row['billing_cycle_month'], 1, $row['billing_cycle_year'])) : $row['billing_cycle_year']; ?><br>
-                                    <strong>Date:</strong> <?php echo date('F j, Y g:i A', strtotime($row['transaction_date'])); ?>
+                                        <?php echo $row['billing_cycle_month'] ? formatBillingPeriod($row['billing_cycle_month'], $row['billing_cycle_year']) : htmlspecialchars($row['billing_cycle_year']); ?><br>
+                                    <strong>Date:</strong> <?php echo !empty($row['transaction_date']) ? htmlspecialchars(date('F j, Y g:i A', strtotime($row['transaction_date']))) : 'N/A'; ?>
                                 </div>
                             </div>
                         </div>
@@ -337,19 +268,218 @@ switch ($action) {
                 </div>
             </div>
             
-            <script>
-                // Auto-trigger print dialog
-                window.onload = function() {
+            <script nonce="<?php echo CSP_NONCE; ?>">
+                <?php if (isset($_GET['print'])): ?>
+                document.addEventListener('DOMContentLoaded', function() {
                     window.print();
-                };
+                });
+                <?php endif; ?>
+                
+                var printBtn = document.getElementById('printBtn');
+                if (printBtn) {
+                    printBtn.addEventListener('click', window.print);
+                }
             </script>
         </body>
         </html>
         <?php
         exit();
         
+    case 'void':
+        if (!isLoggedIn() || !isTreasurer()) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit();
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+            exit();
+        }
+        if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+            exit();
+        }
+        if (!checkRateLimit($_SESSION['user_id'] ?? getClientIp(), 10, 60, '%void%')) {
+            echo json_encode(['success' => false, 'message' => 'Rate limit exceeded. Please try again later.']);
+            exit();
+        }
+        $transaction_id = isset($_POST['transaction_id']) ? intval($_POST['transaction_id']) : 0;
+        $reason = cleanInput($_POST['reason'] ?? '');
+        if (!$transaction_id || empty($reason)) {
+            echo json_encode(['success' => false, 'message' => 'Invalid request']);
+            exit();
+        }
+        $stmt = $db->prepare("UPDATE transactions SET status = 'void', notes = :reason WHERE id = :id AND status != 'void'");
+        $result = $stmt->execute([':reason' => $reason, ':id' => $transaction_id]);
+        if ($result && $stmt->rowCount() > 0) {
+            logAudit($_SESSION['user_id'], "Voided transaction ID {$transaction_id}: {$reason}");
+            echo json_encode(['success' => true, 'message' => 'Transaction voided']);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Failed to void transaction or already voided']);
+        }
+        exit();
+        
+    case 'member_history':
+        if (!isLoggedIn() || !isTreasurer()) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit();
+        }
+        $member_id = cleanInput($_GET['member_id'] ?? '');
+        if (!$member_id) {
+            echo json_encode(['success' => false, 'message' => 'Member ID required']);
+            exit();
+        }
+        $stmt = $db->prepare("SELECT t.id, t.receipt_no, t.member_id, t.amount, t.payment_method, t.billing_cycle_month, t.billing_cycle_year, t.notes, t.status, t.transaction_date, m.full_name FROM transactions t JOIN members m ON t.member_id = m.member_id WHERE t.member_id = :mid AND t.status != 'void' ORDER BY t.transaction_date DESC LIMIT 50");
+        $stmt->execute([':mid' => $member_id]);
+        $history = $stmt->fetchAll();
+        
+        // Whitelist response fields
+        $allowed = ['id', 'receipt_no', 'member_id', 'amount', 'payment_method', 'billing_cycle_month', 'billing_cycle_year', 'notes', 'status', 'transaction_date', 'full_name'];
+        $safe_history = [];
+        foreach ($history as $row) {
+            $safe_history[] = array_intersect_key($row, array_flip($allowed));
+        }
+        
+        echo json_encode(['success' => true, 'history' => $safe_history]);
+        exit();
+
+    case 'batch_payment':
+        if (!isLoggedIn() || !isTreasurer()) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit();
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+            exit();
+        }
+        if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+            exit();
+        }
+        $member_ids_raw = $_POST['member_ids'] ?? [];
+        if (is_string($member_ids_raw)) {
+            $member_ids = json_decode($member_ids_raw, true);
+            if (!is_array($member_ids)) {
+                echo json_encode(['success' => false, 'message' => 'Invalid member IDs']);
+                exit();
+            }
+        } else {
+            $member_ids = $member_ids_raw;
+        }
+        $amount = isset($_POST['amount']) ? (float)$_POST['amount'] : 0;
+        $payment_method = cleanInput($_POST['payment_method'] ?? '');
+        $billing_month = (int)$_POST['billing_month'] ?? 0;
+        $billing_year = (int)$_POST['billing_year'] ?? 0;
+        $notes = cleanInput($_POST['notes'] ?? '');
+        $transaction_date = cleanInput($_POST['transaction_date'] ?? '');
+        if (empty($transaction_date) || DateTime::createFromFormat('Y-m-d', $transaction_date) === false) {
+            $transaction_date = date('Y-m-d');
+        }
+        $transaction_time = cleanInput($_POST['transaction_time'] ?? '');
+        if (empty($transaction_time) || DateTime::createFromFormat('H:i', $transaction_time) === false) {
+            $transaction_time = date('H:i');
+        }
+        $transaction_datetime = $transaction_date . ' ' . $transaction_time . ':00';
+        
+        // Validate amount upper bound
+        if ($amount <= 0 || $amount > 999999.99) {
+            echo json_encode(['success' => false, 'message' => 'Invalid amount. Must be between 0.01 and 999,999.99']);
+            exit();
+        }
+        
+        if (empty($member_ids) || !is_array($member_ids) || empty($payment_method) || empty($billing_month) || empty($billing_year)) {
+            echo json_encode(['success' => false, 'message' => 'All fields required']);
+            exit();
+        }
+        if (count($member_ids) > 100) {
+            echo json_encode(['success' => false, 'message' => 'Maximum 100 members per batch']);
+            exit();
+        }
+        
+        $success_count = 0;
+        $fail_count = 0;
+        
+        // CRITICAL FIX: Wrap batch payment in transaction for atomicity
+        try {
+            $db->beginTransaction();
+            
+            foreach ($member_ids as $mid) {
+                $mid = cleanInput($mid);
+                if (empty($mid)) continue;
+                $member_check = $db->prepare("SELECT id FROM members WHERE member_id = :mid");
+                $member_check->execute([':mid' => $mid]);
+                if (!$member_check->fetch()) { $fail_count++; continue; }
+                $dup_check = $db->prepare("SELECT id FROM transactions WHERE member_id = :mid AND billing_cycle_month = :m AND billing_cycle_year = :y AND status != 'void'");
+                $dup_check->execute([':mid' => $mid, ':m' => $billing_month, ':y' => $billing_year]);
+                if ($dup_check->fetch()) { $fail_count++; continue; }
+                
+                // Annual limit check per member
+                $yearly_stmt = $db->prepare("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE member_id = :mid AND billing_cycle_year = :y AND status != 'void'");
+                $yearly_stmt->execute([':mid' => $mid, ':y' => $billing_year]);
+                $yearly_total = $yearly_stmt->fetch()['total'];
+                $settings_stmt = $db->prepare("SELECT annual_amount FROM settings WHERE id = 1");
+                $settings_stmt->execute();
+                $settings = $settings_stmt->fetch();
+                $annual_limit = $settings ? $settings['annual_amount'] : 0;
+                if (($yearly_total + $amount) > $annual_limit) { $fail_count++; continue; }
+                
+                $receipt_no = generateReceiptNumber();
+                $insert = $db->prepare("INSERT INTO transactions (receipt_no, member_id, treasurer_id, amount, payment_method, billing_cycle_month, billing_cycle_year, notes, transaction_date) VALUES (:receipt_no, :member_id, :treasurer_id, :amount, :payment_method, :billing_month, :billing_year, :notes, :transaction_date)");
+                $result = $insert->execute([
+                    ':receipt_no' => $receipt_no,
+                    ':member_id' => $mid,
+                    ':treasurer_id' => $_SESSION['user_id'],
+                    ':amount' => $amount,
+                    ':payment_method' => $payment_method,
+                    ':billing_month' => $billing_month,
+                    ':billing_year' => $billing_year,
+                    ':notes' => $notes,
+                    ':transaction_date' => $transaction_datetime
+                ]);
+                if ($result) { 
+                    $success_count++; 
+                    logAudit($_SESSION['user_id'], "Batch payment: GH₵ {$amount} for {$mid}"); 
+                } else { 
+                    $fail_count++; 
+                }
+            }
+            
+            $db->commit();
+        } catch (PDOException $e) {
+            $db->rollBack();
+            error_log("Batch Transaction Error: " . $e->getMessage());
+            echo json_encode(['success' => false, 'message' => 'Batch processing failed. Please try again.']);
+            exit();
+        }
+        
+        echo json_encode(['success' => true, 'message' => "Batch complete: {$success_count} recorded, {$fail_count} failed", 'success_count' => $success_count, 'fail_count' => $fail_count]);
+        exit();
+
+    case 'recurring_late':
+        if (!isLoggedIn() || !isTreasurer()) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit();
+        }
+        $late_payers = getRecurringLatePayers($db);
+        echo json_encode(['success' => true, 'late_payers' => $late_payers]);
+        exit();
+        
+    case 'get_last':
+        if (!isLoggedIn() || !isTreasurer()) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit();
+        }
+        $stmt = $db->query("SELECT t.id, t.receipt_no, t.member_id, t.amount, t.payment_method, t.billing_cycle_month, t.billing_cycle_year, t.transaction_date, m.full_name FROM transactions t JOIN members m ON t.member_id = m.member_id WHERE t.status != 'void' ORDER BY t.id DESC LIMIT 1");
+        $last = $stmt->fetch();
+        if ($last) {
+            $allowed = ['id', 'receipt_no', 'member_id', 'amount', 'payment_method', 'billing_cycle_month', 'billing_cycle_year', 'transaction_date', 'full_name'];
+            echo json_encode(['success' => true, 'transaction' => array_intersect_key($last, array_flip($allowed))]);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'No transactions found']);
+        }
+        exit();
+
     default:
-        header('Content-Type: application/json');
         echo json_encode(['success' => false, 'message' => 'Invalid action']);
+        exit();
 }
 ?>

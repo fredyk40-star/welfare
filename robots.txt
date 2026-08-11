@@ -1,2 +1,7 @@
 User-agent: *
-Disallow:
+Disallow: /includes/
+Disallow: /config/
+Disallow: /api/
+Disallow: /install/
+Disallow: /member/
+Disallow: /treasurer/
