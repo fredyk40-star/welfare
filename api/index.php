@@ -54,10 +54,11 @@ if (strpos($normalizedStatic, '..') === false && $normalizedStatic !== '') {
     $staticPath = __DIR__ . '/../' . $normalizedStatic;
     if (is_file($staticPath)) {
         $ext = strtolower(pathinfo($staticPath, PATHINFO_EXTENSION));
-        // Never serve PHP sources or sensitive config as static content.
-        $blockedTop = ['includes', 'config', 'api', '.vercel', '.git'];
-        $topDir = explode('/', $normalizedStatic)[0];
-        if ($ext === 'php' || in_array(strtolower($topDir), $blockedTop, true)) {
+        // PHP files are handled by the router below, never as static content.
+        if ($ext === 'php') {
+            // fall through to PHP routing
+        // Never serve sensitive config as static content.
+        } elseif (in_array(strtolower(explode('/', $normalizedStatic)[0]), ['includes', 'config', 'api', '.vercel', '.git'], true)) {
             http_response_code(404);
             echo 'Not found';
             exit;
