@@ -18,6 +18,9 @@
   ],
   "author": "GYF Ministry",
   "license": "MIT",
+  "engines": {
+    "node": "22.x"
+  },
   "dependencies": {
     "@capacitor/android": "^6.0.0",
     "@capacitor/core": "^6.0.0"
