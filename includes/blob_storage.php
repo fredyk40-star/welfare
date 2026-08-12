@@ -21,7 +21,7 @@ function blobIsEnabled() {
  *   PUT https://vercel.com/api/blob/?pathname=photos/<file>
  *     Authorization: Bearer <BLOB_READ_WRITE_TOKEN>
  *     x-api-version: 12
- *     x-vercel-blob-access: private   (store is private)
+ *     x-vercel-blob-access: public    (public store -> URL loads directly in <img>)
  *     x-content-type: <mime>
  *     x-add-random-suffix: 1
  *     body = raw bytes
@@ -47,7 +47,7 @@ function blobUploadFile($localPath, $filename, $mimeType = 'application/octet-st
         CURLOPT_HTTPHEADER => [
             'Authorization: Bearer ' . $token,
             'x-api-version: 12',
-            'x-vercel-blob-access: private',
+            'x-vercel-blob-access: public',
             'x-content-type: ' . $mimeType,
             'x-add-random-suffix: 1',
         ],
