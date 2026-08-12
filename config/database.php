@@ -104,10 +104,18 @@ class Database {
             if (!$ca || !file_exists($ca)) {
                 $ca = __DIR__ . '/tidb-ca.pem';
             }
+            // PHP 8.5+ moves these to the Pdo\Mysql class; older PHP uses PDO::.
+            $attrSslCa = defined('Pdo\Mysql::ATTR_SSL_CA')
+                ? \Pdo\Mysql::ATTR_SSL_CA
+                : PDO::MYSQL_ATTR_SSL_CA;
+            $attrVerify = defined('Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')
+                ? \Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT
+                : PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT;
+
             if (file_exists($ca)) {
-                $options[PDO::MYSQL_ATTR_SSL_CA] = $ca;
+                $options[$attrSslCa] = $ca;
             }
-            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+            $options[$attrVerify] = false;
             $this->conn = new PDO($dsn, $this->username, $this->password, $options);
         } catch(PDOException $e) {
             error_log("Connection Error: " . $e->getMessage());
