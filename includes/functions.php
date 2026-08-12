@@ -1,6 +1,80 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/blob_storage.php';
+require_once __DIR__ . '/remember_me.php';
+
+// --- Serverless-safe sessions ---
+// Default PHP file sessions are stored on the ephemeral, non-shared local
+// disk on Vercel serverless. Each request can hit a different instance with
+// no session file, so isLoggedIn() returns false and the user is logged out
+// at random ("logs them out instances"). Persisting session data in MySQL
+// keeps it consistent across every invocation/instance.
+if (!function_exists('registerDatabaseSessionHandler')) {
+    function registerDatabaseSessionHandler() {
+        $pdo = null;
+        $ensureTable = function () use (&$pdo) {
+            if ($pdo === null) {
+                $database = new Database();
+                $pdo = $database->getConnection();
+            }
+            static $created = false;
+            if ($created) {
+                return $pdo;
+            }
+            $pdo->exec(
+                "CREATE TABLE IF NOT EXISTS sessions (" .
+                "id VARCHAR(128) NOT NULL PRIMARY KEY, " .
+                "data MEDIUMTEXT, " .
+                "last_activity INT UNSIGNED NOT NULL, " .
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP" .
+                ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+            );
+            $created = true;
+            return $pdo;
+        };
+
+        session_set_save_handler(
+            function () use ($ensureTable) { $ensureTable(); return true; }, // open
+            function () { return true; },                                    // close
+            function ($id) use ($ensureTable) {                              // read
+                $db = $ensureTable();
+                $stmt = $db->prepare("SELECT data FROM sessions WHERE id = :id");
+                $stmt->execute([':id' => $id]);
+                $row = $stmt->fetch();
+                return $row ? (string) $row['data'] : '';
+            },
+            function ($id, $data) use ($ensureTable) {                      // write
+                $db = $ensureTable();
+                $stmt = $db->prepare(
+                    "REPLACE INTO sessions (id, data, last_activity) VALUES (:id, :data, :la)"
+                );
+                $stmt->execute([':id' => $id, ':data' => $data, ':la' => time()]);
+                return true;
+            },
+            function ($id) use ($ensureTable) {                             // destroy
+                $db = $ensureTable();
+                $stmt = $db->prepare("DELETE FROM sessions WHERE id = :id");
+                $stmt->execute([':id' => $id]);
+                return true;
+            },
+            function ($maxlifetime) use ($ensureTable) {                   // gc
+                $db = $ensureTable();
+                $stmt = $db->prepare("DELETE FROM sessions WHERE last_activity < :cut");
+                $stmt->execute([':cut' => time() - (int) $maxlifetime]);
+                return true;
+            },
+            function () { return true; },                                   // create_sid
+            function ($id) use ($ensureTable) {                             // validate_sid
+                $db = $ensureTable();
+                $stmt = $db->prepare("SELECT 1 FROM sessions WHERE id = :id");
+                $stmt->execute([':id' => $id]);
+                return (bool) $stmt->fetch();
+            }
+        );
+    }
+}
+
+registerDatabaseSessionHandler();
 
 ini_set('session.use_strict_mode', '1');
 session_set_cookie_params([
@@ -9,9 +83,13 @@ session_set_cookie_params([
     'domain' => '',
     'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
     'httponly' => true,
-    'samesite' => 'Strict'
+    'samesite' => 'Lax'
 ]);
 session_start();
+
+// Silent re-auth: if the server-side session was lost but a valid remember-me
+// cookie exists, restore the session instead of bouncing the user to login.
+autoLoginWithRememberMe();
 
 // JSON error response helper
 function jsonError($message, $httpCode = 400) {

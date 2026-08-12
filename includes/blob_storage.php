@@ -118,3 +118,18 @@ function displayPhotoUrl($value) {
     }
     return APP_URL . '/uploads/photos/' . basename($value);
 }
+
+/**
+ * Sanitize a passport_photo value for JSON API responses.
+ * Local/dev values are just filenames (apply basename for safety), but Vercel
+ * Blob values are full public URLs that MUST be returned intact — running
+ * basename() on a URL strips the host/query and breaks image loading in the
+ * member search and Browse Members modals.
+ */
+function photoValueForApi($value) {
+    if (empty($value)) return '';
+    if (preg_match('#^https?://#i', $value)) {
+        return $value;
+    }
+    return basename($value);
+}

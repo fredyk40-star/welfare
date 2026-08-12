@@ -328,11 +328,9 @@ function sortIcon($field, $currentField, $currentDir) {
             <button class="btn btn-outline-warning btn-lg" type="button" id="openBatchModalBtn">
                 📦 Batch Record
             </button>
-            <?php if (isset($_SESSION['last_receipt'])): ?>
-                <button class="btn btn-outline-danger btn-lg" type="button" id="undoLastTransactionBtn">
+            <button class="btn btn-outline-danger btn-lg" type="button" id="undoLastTransactionBtn">
                 ↩️ Undo Last
-                </button>
-            <?php endif; ?>
+            </button>
             <form method="POST" action="<?php echo APP_URL; ?>/api/transactions.php?action=export_csv" style="display: inline;">
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                 <?php foreach (array_filter($_GET, function($k){return $k!=="action"&&$k!=="export";}, ARRAY_FILTER_USE_KEY) as $k => $v): ?>
@@ -725,8 +723,11 @@ if (!empty($late_payers)):
                                         <button class="btn btn-sm btn-info" data-transaction-id="<?php echo (int)$transaction['id']; ?>" data-action="view">
                                             👁️ View
                                         </button>
-                                        <button class="btn btn-sm btn-success" data-transaction-id="<?php echo (int)$transaction['id']; ?>" data-action="print">
+                                         <button class="btn btn-sm btn-success" data-transaction-id="<?php echo (int)$transaction['id']; ?>" data-action="print">
                                             🖨️ Print
+                                        </button>
+                                        <button class="btn btn-sm btn-secondary" data-transaction-id="<?php echo (int)$transaction['id']; ?>" data-action="details">
+                                            📋 Details
                                         </button>
                                         <button class="btn btn-sm btn-danger" data-transaction-id="<?php echo (int)$transaction['id']; ?>" data-action="void">
                                             🚫 Void
@@ -782,7 +783,7 @@ function searchMembers() {
                     const safeId = escapeHtml(member.member_id);
                     const safeEmail = escapeHtml(member.email || '');
                     const safePhone = escapeHtml(member.phone);
-                    const safePhoto = member.passport_photo ? escapeHtml(String(member.passport_photo).replace(/^.*[\\\/]/, '').replace(/[^a-zA-Z0-9_\-.]/g, '')) : '';
+                    const safePhoto = member.passport_photo ? escapeHtml(String(member.passport_photo)) : '';
                     const photoUrl = (p) => { if (!p) return ''; p = String(p); return p.indexOf('http') === 0 ? p : '<?php echo APP_URL; ?>/uploads/photos/' + p; };
                     html += `
                         <div class="card mb-2 member-card" style="cursor: pointer;"
@@ -792,7 +793,7 @@ function searchMembers() {
                                 <div class="d-flex align-items-center">
                                     ${safePhoto ?
                                         `<img src="${photoUrl(safePhoto)}"
-                                              class="member-photo me-3">` : ''}
+                                              class="member-photo me-3" onerror="this.style.display='none'">` : ''}
                                     <div>
                                         <strong>${safeName}</strong><br>
                                         <small>${safeId} | ${safePhone}</small>
@@ -1206,7 +1207,9 @@ function confirmUndo() {
 }
 
 // Open payment modal
-function openPaymentModal() {
+// `preserve` keeps the currently-selected member (used when a member is picked
+// from the Browse Members modal so their selection survives opening the form).
+function openPaymentModal(preserve) {
     // Reset form
     const form = document.getElementById('paymentForm');
     const memberIdEl = document.getElementById('selectedMemberId');
@@ -1220,14 +1223,16 @@ function openPaymentModal() {
     const searchEl = document.getElementById('memberSearch');
     
     if (form) form.reset();
-    if (memberIdEl) memberIdEl.value = '';
-    if (nameEl) {
-        nameEl.textContent = 'None';
-        nameEl.classList.remove('is-selected');
+    if (!preserve) {
+        if (memberIdEl) memberIdEl.value = '';
+        if (nameEl) {
+            nameEl.textContent = 'None';
+            nameEl.classList.remove('is-selected');
+        }
+        if (dotEl) dotEl.style.display = 'none';
+        if (infoEl) infoEl.style.display = 'none';
+        if (submitEl) submitEl.disabled = true;
     }
-    if (dotEl) dotEl.style.display = 'none';
-    if (infoEl) infoEl.style.display = 'none';
-    if (submitEl) submitEl.disabled = true;
     if (resultsEl) resultsEl.innerHTML = '';
     if (progressEl) progressEl.style.display = 'none';
     if (dupWarningEl) dupWarningEl.style.display = 'none';
@@ -1286,7 +1291,7 @@ function loadBrowseMembers(term) {
                 const card = document.createElement('div');
                 card.className = 'col-6 col-sm-4 col-md-3 col-lg-2';
                 card.innerHTML = `
-                    <div class="card h-100 member-browse-card" style="cursor:pointer;" data-member-id="${esc(m.member_id)}" data-member-name="${esc(m.full_name)}">
+                    <div class="card h-100 member-browse-card" style="cursor:pointer;" data-member-id="${esc(m.member_id)}" data-member-name="${esc(m.full_name)}" data-member-phone="${esc(m.phone ?? '')}" data-member-photo="${photo}">
                         <div class="card-body text-center p-2">
                             ${photo
                                 ? `<img src="${photo}" class="member-browse-photo mb-2" alt="Photo" onerror="this.style.display='none'">`
@@ -1305,15 +1310,19 @@ function loadBrowseMembers(term) {
         });
 }
 
-function pickBrowseMember(memberId, memberName) {
-    // Close browse modal, then open payment modal prefilled for this member
+function pickBrowseMember(memberId, memberName, memberPhone, memberPhoto) {
+    // Close browse modal, then open payment modal prefilled for this member.
+    // openPaymentModal(true) shows + resets the form WITHOUT clearing the
+    // selected member, so the subsequent selectMember() sticks. (Previously
+    // openPaymentModal() ran after selectMember() and wiped the selection.)
     const browseModal = bootstrap.Modal.getInstance(document.getElementById('browseMembersModal'));
     if (browseModal) browseModal.hide();
-    // Ensure payment modal exists and select the member
     const pm = document.getElementById('paymentModal');
     if (pm && typeof selectMember === 'function') {
-        selectMember(memberId, memberName);
-        openPaymentModal();
+        openPaymentModal(true);
+        // Pass phone + photo so the selected-member banner is complete
+        // (the Browse grid now carries data-member-phone / data-member-photo).
+        selectMember(memberId, memberName, undefined, memberPhone, memberPhoto);
     }
 }
 
@@ -1481,7 +1490,12 @@ document.addEventListener('DOMContentLoaded', function() {
     document.addEventListener('click', function (e) {
         var card = e.target.closest ? e.target.closest('.member-browse-card[data-member-id]') : null;
         if (!card) return;
-        pickBrowseMember(card.getAttribute('data-member-id'), card.getAttribute('data-member-name'));
+        pickBrowseMember(
+            card.getAttribute('data-member-id'),
+            card.getAttribute('data-member-name'),
+            card.getAttribute('data-member-phone'),
+            card.getAttribute('data-member-photo')
+        );
     });
     
     var undoBtn = document.getElementById('undoLastTransactionBtn');
@@ -1493,14 +1507,25 @@ document.addEventListener('DOMContentLoaded', function() {
     var confirmVoidBtn = document.getElementById('confirmVoidBtn');
     if (confirmVoidBtn) { confirmVoidBtn.addEventListener('click', confirmVoid); }
     
-    document.querySelectorAll('[data-action="view"]').forEach(function(btn) {
-        btn.addEventListener('click', function() { viewReceipt(this.dataset.transactionId); });
-    });
-    document.querySelectorAll('[data-action="print"]').forEach(function(btn) {
-        btn.addEventListener('click', function() { printReceipt(this.dataset.transactionId); });
-    });
-    document.querySelectorAll('[data-action="void"]').forEach(function(btn) {
-        btn.addEventListener('click', function() { voidTransaction(this.dataset.transactionId); });
+    // Single document-level delegation for all [data-action] buttons. This covers
+    // both the static row buttons (View/Print/Void/Details) AND buttons injected
+    // later into the Transaction Details modal (Print/History), which the old
+    // DOMContentLoaded querySelectorAll could never reach.
+    document.addEventListener('click', function (e) {
+        var b = e.target.closest ? e.target.closest('[data-action]') : null;
+        if (!b) return;
+        var a = b.getAttribute('data-action');
+        if (a === 'view') {
+            viewReceipt(b.dataset.transactionId);
+        } else if (a === 'print') {
+            printReceipt(b.dataset.transactionId);
+        } else if (a === 'void') {
+            voidTransaction(b.dataset.transactionId);
+        } else if (a === 'details') {
+            showTxDetail(b.dataset.transactionId);
+        } else if (a === 'history') {
+            loadMemberHistory(b.dataset.memberId);
+        }
     });
 });
 </script>

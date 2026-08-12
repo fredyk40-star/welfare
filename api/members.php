@@ -44,7 +44,7 @@ switch ($action) {
         $members = $stmt->fetchAll();
         foreach ($members as &$m) {
             if (!empty($m['passport_photo'])) {
-                $m['passport_photo'] = basename($m['passport_photo']);
+                $m['passport_photo'] = photoValueForApi($m['passport_photo']);
             }
         }
         unset($m);
@@ -83,7 +83,7 @@ switch ($action) {
             $safe_member = [];
             foreach ($allowed_fields as $field) {
                 if (isset($member[$field])) {
-                    $safe_member[$field] = $field === 'passport_photo' ? basename($member[$field]) : $member[$field];
+                    $safe_member[$field] = $field === 'passport_photo' ? photoValueForApi($member[$field]) : $member[$field];
                 }
             }
 
@@ -142,7 +142,7 @@ switch ($action) {
         $members = $stmt->fetchAll();
         foreach ($members as &$m) {
             if (!empty($m['passport_photo'])) {
-                $m['passport_photo'] = basename($m['passport_photo']);
+                $m['passport_photo'] = photoValueForApi($m['passport_photo']);
             }
         }
         unset($m);

@@ -81,10 +81,10 @@ switch ($action) {
             echo json_encode(['success' => false, 'message' => 'Unauthorized']);
             exit();
         }
-        if (!validateCsrfToken($_GET['csrf_token'] ?? '')) {
-            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
-            exit();
-        }
+        // NOTE: intentionally NOT requiring a CSRF token. This is a read-only GET
+        // that only renders a receipt (no state change) and is already authz-gated
+        // below. Requiring CSRF here broke every receipt View/Print/Download caller
+        // (none of them send a token). CSRF is enforced only on state-changing POSTs.
         
         $transaction_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
         
@@ -115,10 +115,9 @@ switch ($action) {
             echo json_encode(['success' => false, 'message' => 'Unauthorized']);
             exit();
         }
-        if (!validateCsrfToken($_GET['csrf_token'] ?? '')) {
-            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
-            exit();
-        }
+        // NOTE: intentionally NOT requiring a CSRF token. Read-only GET that renders
+        // a receipt and is already authz-gated (member_id pinned to the session).
+        // Requiring CSRF here broke every member receipt View/Print/Download caller.
         
         $receipt_no = cleanInput($_GET['receipt_no']);
         
