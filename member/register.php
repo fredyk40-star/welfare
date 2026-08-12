@@ -18,6 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = cleanInput($_POST['email']);
     $country_code = cleanInput($_POST['country_code']);
     $phone_raw = cleanInput($_POST['phone']);   // user-entered digits only, for form repopulation
+    $phone_raw = preg_replace('/\s+/', '', $phone_raw); // strip grouping spaces from client-side formatting
     $address = cleanInput($_POST['address']);
     $occupation = isset($_POST['occupation']) ? cleanInput($_POST['occupation']) : null;
     $emergency_name = cleanInput($_POST['emergency_contact_name']);

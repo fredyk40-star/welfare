@@ -107,23 +107,15 @@ function validateForm(form) {
 }
 
 function formatPhoneNumber(field) {
+    // Keep only digits. The country code is handled separately (dropdown on
+    // register, or stored separately), so we must NOT inject "+233" here —
+    // doing so made the server reject the number as "already has country code".
     let value = field.value.replace(/\D/g, '');
-    
-    if (value.length > 0) {
-        if (value.startsWith('0')) {
-            value = '+233' + value.substring(1);
-        } else if (!value.startsWith('233') && value.length === 9) {
-            value = '+233' + value;
-        } else if (value.startsWith('233')) {
-            value = '+' + value;
-        }
-        
-        // Format: local Ghana numbers to +233 format
-        if (value.length > 3) value = value.substring(0, 3) + ' ' + value.substring(3);
-        if (value.length > 6) value = value.substring(0, 6) + ' ' + value.substring(6);
-        if (value.length > 10) value = value.substring(0, 10) + ' ' + value.substring(10);
-    }
-    
+
+    // Light local-digit grouping for readability (e.g. 591 034 369).
+    if (value.length > 3) value = value.substring(0, 3) + ' ' + value.substring(3);
+    if (value.length > 7) value = value.substring(0, 7) + ' ' + value.substring(7);
+
     field.value = value;
 }
 
