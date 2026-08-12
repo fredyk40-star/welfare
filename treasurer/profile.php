@@ -21,6 +21,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
         $error = 'Invalid request. Please try again.';
+    } elseif (!checkRateLimit($treasurer_id, 10, 300, '%profile update%')) {
+        $error = 'Too many profile update attempts. Please try again later.';
+        logAudit($treasurer_id, 'Profile update rate limit exceeded');
     } else {
         // Update Email
         if ($action === 'update_email') {
