@@ -57,6 +57,26 @@
     <script src="<?php echo APP_URL; ?>/assets/js/slideshow.js"></script>
     <script src="<?php echo APP_URL; ?>/assets/js/modal-failsafe.js"></script>
 
+<!-- Offline warning banner (network-only app: warns when internet is lost) -->
+<div id="offlineBanner">⚠️ An active internet connection is required. You appear to be offline.</div>
+
+<script nonce="<?php echo CSP_NONCE; ?>">
+document.addEventListener('DOMContentLoaded', function () {
+    var banner = document.getElementById('offlineBanner');
+    function updateConnectionStatus() {
+        if (!banner) return;
+        if (navigator.onLine) {
+            banner.classList.remove('show');
+        } else {
+            banner.classList.add('show');
+        }
+    }
+    window.addEventListener('online', updateConnectionStatus);
+    window.addEventListener('offline', updateConnectionStatus);
+    updateConnectionStatus();
+});
+</script>
+
 <script nonce="<?php echo CSP_NONCE; ?>">
 document.addEventListener('DOMContentLoaded', function() {
     var logoutBtn = document.getElementById('logoutBtn');
@@ -85,6 +105,19 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+</script>
+
+<!-- Register the network-only service worker (no offline caching) -->
+<script nonce="<?php echo CSP_NONCE; ?>">
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+        navigator.serviceWorker.register('<?php echo APP_URL; ?>/service-worker.js')
+            .catch(function (err) {
+                console.warn('Service worker registration failed:', err);
+            });
+    });
+}
 </script></body>
+
 </html>
 

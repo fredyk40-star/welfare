@@ -11,6 +11,9 @@ require_once __DIR__ . '/security.php';
     <meta name="description" content="GYF Welfare Management System">
     <title><?php echo APP_NAME; ?></title>
     
+    <!-- PWA: manifest + theme -->
+    <link rel="manifest" href="<?php echo APP_URL; ?>/manifest.json">
+    
     <!-- Bootstrap 5 CSS (Local) -->
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
     

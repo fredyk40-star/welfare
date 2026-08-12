@@ -10,4 +10,5 @@ uploads/
 # Local-only / secret files
 .env
 .env.local
-service-worker.js
+# Note: service-worker.js is intentionally NOT ignored — it must be deployed for the PWA.
+

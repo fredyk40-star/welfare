@@ -1347,3 +1347,23 @@ th {
     text-align: -webkit-match-parent;
     text-align: match-parent;
 }
+
+/* Offline warning banner (network-only PWA: warns when no internet) */
+#offlineBanner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1080;
+    display: none;
+    padding: 0.6rem 1rem;
+    background: #d32f2f;
+    color: #fff;
+    text-align: center;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+#offlineBanner.show {
+    display: block;
+}
+
