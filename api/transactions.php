@@ -399,6 +399,7 @@ switch ($action) {
         $fail_count = 0;
         
         // CRITICAL FIX: Wrap batch payment in transaction for atomicity
+        $receipt_jobs = []; // emails queued during the transaction, sent after commit
         try {
             $db->beginTransaction();
             
@@ -435,11 +436,14 @@ switch ($action) {
                     ':notes' => $notes,
                     ':transaction_date' => $transaction_datetime
                 ]);
-                if ($result) { 
-                    $success_count++; 
-                    logAudit($_SESSION['user_id'], "Batch payment: GH₵ {$amount} for {$mid}"); 
-                } else { 
-                    $fail_count++; 
+                if ($result) {
+                    $success_count++;
+                    logAudit($_SESSION['user_id'], "Batch payment: GH₵ {$amount} for {$mid}");
+                    // Queue receipt email (sent after commit so a mail failure
+                    // never rolls back the payment and the DB tx stays short).
+                    $receipt_jobs[] = ['mid' => $mid, 'receipt_no' => $receipt_no];
+                } else {
+                    $fail_count++;
                 }
             }
             
@@ -449,6 +453,34 @@ switch ($action) {
             error_log("Batch Transaction Error: " . $e->getMessage());
             echo json_encode(['success' => false, 'message' => 'Batch processing failed. Please try again.']);
             exit();
+        }
+
+        // Send receipt emails AFTER the transaction is committed.
+        $treasurer_email = '';
+        $t_stmt = $db->prepare("SELECT email FROM members WHERE member_id = :mid");
+        $t_stmt->execute([':mid' => $_SESSION['user_id']]);
+        $t = $t_stmt->fetch();
+        if ($t) { $treasurer_email = $t['email']; }
+        foreach ($receipt_jobs as $job) {
+            try {
+                $mid = $job['mid'];
+                $m_stmt = $db->prepare("SELECT email, full_name, passport_photo FROM members WHERE member_id = :mid");
+                $m_stmt->execute([':mid' => $mid]);
+                $m = $m_stmt->fetch();
+                if (!$m) continue;
+                $receipt_data = [
+                    'receipt_no'      => $job['receipt_no'],
+                    'member_name'     => $m['full_name'],
+                    'member_id'       => $mid,
+                    'amount'          => $amount,
+                    'payment_method'  => $payment_method,
+                    'billing_period'  => date('F Y', mktime(0, 0, 0, $billing_month, 1, $billing_year)),
+                    'date'            => $transaction_datetime
+                ];
+                sendReceiptEmail($m['email'], $receipt_data, $m['passport_photo'], $treasurer_email);
+            } catch (Exception $e) {
+                error_log('Batch receipt email error: ' . $e->getMessage());
+            }
         }
         
         echo json_encode(['success' => true, 'message' => "Batch complete: {$success_count} recorded, {$fail_count} failed", 'success_count' => $success_count, 'fail_count' => $fail_count]);

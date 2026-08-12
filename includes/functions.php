@@ -190,7 +190,7 @@ function sanitizeEmailValue($value) {
     return str_replace(["\r", "\n", "\0"], '', $value);
 }
 
-function sendEmail($to, $subject, $message) {
+function sendEmail($to, $subject, $message, $cc = null) {
     // Prevent header injection: recipient and subject must never contain CRLF/NUL
     $to = sanitizeEmailValue($to);
     $subject = sanitizeEmailValue($subject);
@@ -198,6 +198,17 @@ function sendEmail($to, $subject, $message) {
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
         error_log('sendEmail aborted: invalid recipient "' . $to . '"');
         return false;
+    }
+
+    // Validate and sanitize any CC recipient(s)
+    $cc_list = [];
+    if ($cc !== null) {
+        foreach ((array) $cc as $cc_addr) {
+            $cc_addr = sanitizeEmailValue($cc_addr);
+            if (filter_var($cc_addr, FILTER_VALIDATE_EMAIL)) {
+                $cc_list[] = $cc_addr;
+            }
+        }
     }
 
     $api_key = getenv('RESEND_API_KEY');
@@ -216,6 +227,9 @@ function sendEmail($to, $subject, $message) {
         'subject' => $subject,
         'html' => $message
     ];
+    if (!empty($cc_list)) {
+        $payload['cc'] = $cc_list;
+    }
 
     $ch = curl_init('https://api.resend.com/emails');
     curl_setopt_array($ch, [
@@ -253,7 +267,7 @@ function sendEmail($to, $subject, $message) {
     return false;
 }
 
-function sendReceiptEmail($member_email, $receipt_data, $member_photo = null) {
+function sendReceiptEmail($member_email, $receipt_data, $member_photo = null, $treasurer_email = null) {
     // Sanitize all recipient/header/body inputs to block injection
     $member_email = sanitizeEmailValue($member_email);
     $safe = [];
@@ -263,9 +277,14 @@ function sendReceiptEmail($member_email, $receipt_data, $member_photo = null) {
     // Re-apply HTML escaping for body safety
     $safe = array_map('htmlspecialchars', $safe);
 
+    // Render the member's passport photo in the receipt (if available)
     $photo_html = '';
     if ($member_photo) {
         $photo_url = displayPhotoUrl($member_photo);
+        if ($photo_url !== '') {
+            $photo_html = '<img src="' . htmlspecialchars($photo_url, ENT_QUOTES, 'UTF-8') .
+                '" alt="Member Photo" style="width:90px;height:90px;border-radius:50%;object-fit:cover;margin-bottom:10px;">';
+        }
     }
 
     $subject = 'Payment Receipt - ' . APP_NAME;
@@ -337,7 +356,7 @@ function sendReceiptEmail($member_email, $receipt_data, $member_photo = null) {
     </html>
     ';
 
-    return sendEmail($member_email, $subject, $message);
+    return sendEmail($member_email, $subject, $message, $treasurer_email);
 }
 
 function redirectTo($url) {

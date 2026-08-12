@@ -13,6 +13,15 @@ $success = '';
 $error = '';
 $csrf_token = generateCsrfToken();
 
+// Treasurer's own email (for CC on receipts)
+$treasurer_email = '';
+$treasurer_stmt = $db->prepare("SELECT email FROM members WHERE member_id = :mid");
+$treasurer_stmt->execute([':mid' => $_SESSION['user_id']]);
+$treasurer_row = $treasurer_stmt->fetch();
+if ($treasurer_row) {
+    $treasurer_email = $treasurer_row['email'];
+}
+
 // Handle new transaction submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'record_payment') {
     if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
@@ -125,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                 'billing_period' => date('F Y', mktime(0, 0, 0, $billing_month, 1, $billing_year)),
                                 'date' => $transaction_datetime
                             ];
-                            sendReceiptEmail($member['email'], $receipt_data, $member['passport_photo']);
+                            sendReceiptEmail($member['email'], $receipt_data, $member['passport_photo'], $treasurer_email);
                         } catch (Exception $e) {
                             error_log("Receipt Email Error: " . $e->getMessage());
                         }
