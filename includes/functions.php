@@ -347,7 +347,8 @@ function redirectTo($url) {
         exit();
     }
     // Fallback when output already started: redirect via JavaScript.
-    echo '<script>window.location.href = ' . json_encode($target) . ';</script>';
+    $nonceAttr = defined('CSP_NONCE') ? ' nonce="' . CSP_NONCE . '"' : '';
+    echo '<script' . $nonceAttr . '>window.location.href = ' . json_encode($target) . ';</script>';
     exit();
 }
 

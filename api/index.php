@@ -49,6 +49,10 @@ $staticMime = [
     'pdf'   => 'application/pdf',
 ];
 $normalizedStatic = ltrim($requestUri, '/');
+// Map the browser's automatic /favicon.ico probe to the committed PNG.
+if ($normalizedStatic === 'favicon.ico') {
+    $normalizedStatic = 'assets/images/favicon.png';
+}
 // Reject traversal and anything outside the project.
 if (strpos($normalizedStatic, '..') === false && $normalizedStatic !== '') {
     $staticPath = __DIR__ . '/../' . $normalizedStatic;
