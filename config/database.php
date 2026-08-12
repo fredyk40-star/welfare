@@ -57,8 +57,10 @@ define('DB_CHARSET', $db_charset);
 // Application Configuration
 $app_name = getenv('APP_NAME') ?: 'GYF Welfare Management System';
 $app_url = getenv('APP_URL') ?: 'http://localhost/welfare';
+// Strip a trailing slash so `APP_URL . '/assets/...'` never produces a
+// double slash, which Vercel 308-redirects and CSP then blocks.
 define('APP_NAME', $app_name);
-define('APP_URL', $app_url);
+define('APP_URL', rtrim($app_url, '/'));
 $upload_dir = getenv('UPLOAD_DIR');
 define('UPLOAD_DIR', $upload_dir ? rtrim($upload_dir, '/') . '/' : __DIR__ . '/../uploads/');
 define('MAX_UPLOAD_SIZE', 5 * 1024 * 1024); // 5MB
