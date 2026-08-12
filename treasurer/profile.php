@@ -108,6 +108,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         
+        // Update Phone Number
+        if ($action === 'update_phone') {
+            $country_code = cleanInput($_POST['country_code'] ?? '+233');
+            $phone_raw = cleanInput($_POST['phone'] ?? '');
+
+            if (strpos($phone_raw, '+') !== false) {
+                $error = 'Please enter the phone number without the country code.';
+            } elseif (!preg_match('/^[0-9]{7,15}$/', $phone_raw)) {
+                $error = 'Phone number must be 7 to 15 digits.';
+            } elseif (!in_array($country_code, ['+233','+1','+44','+27','+234','+254','+255','+256','+265','+260','+263','+258','+257','+250','+221','+223','+226','+229','+224','+225','+220','+232','+231'], true)) {
+                $error = 'Invalid country code selected.';
+            } else {
+                $new_phone = $country_code . ' ' . $phone_raw;
+                $check_query = "SELECT id FROM members WHERE phone = :phone AND member_id != :member_id";
+                $check_stmt = $db->prepare($check_query);
+                $check_stmt->execute([':phone' => $new_phone, ':member_id' => $treasurer_id]);
+
+                if ($check_stmt->rowCount() > 0) {
+                    $error = 'Phone number already registered to another member.';
+                } else {
+                    $update_query = "UPDATE members SET phone = :phone WHERE member_id = :member_id";
+                    $update_stmt = $db->prepare($update_query);
+                    try {
+                        $update_stmt->execute([
+                            ':phone' => $new_phone,
+                            ':member_id' => $treasurer_id
+                        ]);
+                        logAudit($treasurer_id, 'Phone number updated');
+                        $success = 'Phone number updated successfully.';
+                    } catch (PDOException $e) {
+                        $error = 'Failed to update phone number.';
+                        error_log('Treasurer phone update error: ' . $e->getMessage());
+                    }
+                }
+            }
+        }
+
         // Toggle 2FA
         if ($action === 'toggle_2fa') {
             $enable_2fa = !empty($_POST['enable_2fa']);
@@ -152,6 +189,15 @@ $treasurer_query = "SELECT * FROM members WHERE member_id = :member_id";
 $treasurer_stmt = $db->prepare($treasurer_query);
 $treasurer_stmt->execute([':member_id' => $treasurer_id]);
 $treasurer = $treasurer_stmt->fetch();
+
+// Split stored phone ("+233 123456789") into country code + raw digits for the form
+$current_phone = $treasurer['phone'] ?? '';
+$current_country_code = '+233';
+$current_phone_raw = $current_phone;
+if (preg_match('/^(\+\d+)\s+(.*)$/', $current_phone, $m)) {
+    $current_country_code = $m[1];
+    $current_phone_raw = $m[2];
+}
 
 // Get activity statistics
 $activity_query = "SELECT COUNT(*) as total_logs FROM audit_logs WHERE user_id = :user_id";
@@ -293,6 +339,57 @@ $recent_logs = $logs_stmt->fetchAll();
                     </div>
                     
                     <button type="submit" class="btn btn-primary">Update Email</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Update Phone Number -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Update Phone Number</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="">
+                    <input type="hidden" name="action" value="update_phone">
+                    <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
+
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label for="country_code" class="form-label">Country Code</label>
+                            <select class="form-control" id="country_code" name="country_code" required>
+                                <option value="+233" <?php echo $current_country_code === '+233' ? 'selected' : ''; ?>>Ghana (+233)</option>
+                                <option value="+1" <?php echo $current_country_code === '+1' ? 'selected' : ''; ?>>USA (+1)</option>
+                                <option value="+44" <?php echo $current_country_code === '+44' ? 'selected' : ''; ?>>UK (+44)</option>
+                                <option value="+27" <?php echo $current_country_code === '+27' ? 'selected' : ''; ?>>South Africa (+27)</option>
+                                <option value="+234" <?php echo $current_country_code === '+234' ? 'selected' : ''; ?>>Nigeria (+234)</option>
+                                <option value="+254" <?php echo $current_country_code === '+254' ? 'selected' : ''; ?>>Kenya (+254)</option>
+                                <option value="+255" <?php echo $current_country_code === '+255' ? 'selected' : ''; ?>>Tanzania (+255)</option>
+                                <option value="+256" <?php echo $current_country_code === '+256' ? 'selected' : ''; ?>>Uganda (+256)</option>
+                                <option value="+265" <?php echo $current_country_code === '+265' ? 'selected' : ''; ?>>Malawi (+265)</option>
+                                <option value="+260" <?php echo $current_country_code === '+260' ? 'selected' : ''; ?>>Zambia (+260)</option>
+                                <option value="+263" <?php echo $current_country_code === '+263' ? 'selected' : ''; ?>>Zimbabwe (+263)</option>
+                                <option value="+258" <?php echo $current_country_code === '+258' ? 'selected' : ''; ?>>Mozambique (+258)</option>
+                                <option value="+257" <?php echo $current_country_code === '+257' ? 'selected' : ''; ?>>Burundi (+257)</option>
+                                <option value="+250" <?php echo $current_country_code === '+250' ? 'selected' : ''; ?>>Rwanda (+250)</option>
+                                <option value="+221" <?php echo $current_country_code === '+221' ? 'selected' : ''; ?>>Senegal (+221)</option>
+                                <option value="+223" <?php echo $current_country_code === '+223' ? 'selected' : ''; ?>>Mali (+223)</option>
+                                <option value="+226" <?php echo $current_country_code === '+226' ? 'selected' : ''; ?>>Burkina Faso (+226)</option>
+                                <option value="+229" <?php echo $current_country_code === '+229' ? 'selected' : ''; ?>>Benin (+229)</option>
+                                <option value="+224" <?php echo $current_country_code === '+224' ? 'selected' : ''; ?>>Guinea (+224)</option>
+                                <option value="+225" <?php echo $current_country_code === '+225' ? 'selected' : ''; ?>>Ivory Coast (+225)</option>
+                                <option value="+220" <?php echo $current_country_code === '+220' ? 'selected' : ''; ?>>Gambia (+220)</option>
+                                <option value="+232" <?php echo $current_country_code === '+232' ? 'selected' : ''; ?>>Sierra Leone (+232)</option>
+                                <option value="+231" <?php echo $current_country_code === '+231' ? 'selected' : ''; ?>>Liberia (+231)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-9 mb-3">
+                            <label for="phone" class="form-label">Phone Number</label>
+                            <input type="tel" class="form-control" id="phone" name="phone"
+                                   value="<?php echo htmlspecialchars($current_phone_raw, ENT_QUOTES, 'UTF-8'); ?>" placeholder="XX XXX XXXX" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">Update Phone</button>
                 </form>
             </div>
         </div>
