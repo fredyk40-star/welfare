@@ -21,11 +21,13 @@ function blobIsEnabled() {
  *   PUT https://vercel.com/api/blob/?pathname=photos/<file>
  *     Authorization: Bearer <BLOB_READ_WRITE_TOKEN>
  *     x-api-version: 12
- *     x-vercel-blob-access: public    (public store -> URL loads directly in <img>)
+ *     x-vercel-blob-access: <public|private>
  *     x-content-type: <mime>
  *     x-add-random-suffix: 1
  *     body = raw bytes
- * Returns ['success'=>bool,'url'=>string,'message'=>string].
+ * Tries public first (URL renders directly in <img>); if the store is
+ * configured as private it falls back to private access so the upload still
+ * succeeds. Returns ['success'=>bool,'url'=>string,'message'=>string].
  */
 function blobUploadFile($localPath, $filename, $mimeType = 'application/octet-stream') {
     $token = getenv('BLOB_READ_WRITE_TOKEN');
@@ -42,40 +44,47 @@ function blobUploadFile($localPath, $filename, $mimeType = 'application/octet-st
     $url = 'https://vercel.com/api/blob/?pathname=' . urlencode($pathname);
     $content = file_get_contents($localPath);
 
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_HTTPHEADER => [
-            'Authorization: Bearer ' . $token,
-            'x-api-version: 12',
-            'x-vercel-blob-access: public',
-            'x-content-type: ' . $mimeType,
-            'x-add-random-suffix: 1',
-        ],
-        CURLOPT_CUSTOMREQUEST   => 'PUT',
-        CURLOPT_RETURNTRANSFER  => true,
-        CURLOPT_TIMEOUT         => 30,
-        CURLOPT_POSTFIELDS      => $content,
-    ]);
-    $resp = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err  = curl_error($ch);
-    curl_close($ch);
+    // Try public, fall back to private (store may be set to private in dashboard).
+    foreach (['public', 'private'] as $access) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $token,
+                'x-api-version: 12',
+                'x-vercel-blob-access: ' . $access,
+                'x-content-type: ' . $mimeType,
+                'x-add-random-suffix: 1',
+            ],
+            CURLOPT_CUSTOMREQUEST   => 'PUT',
+            CURLOPT_RETURNTRANSFER  => true,
+            CURLOPT_TIMEOUT         => 30,
+            CURLOPT_POSTFIELDS      => $content,
+        ]);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
 
-    if ($err) {
-        error_log('Blob upload cURL error: ' . $err);
-        return ['success' => false, 'url' => '', 'message' => $err];
-    }
-    if ($code < 200 || $code >= 300) {
+        if ($err) {
+            error_log('Blob upload cURL error: ' . $err);
+            return ['success' => false, 'url' => '', 'message' => $err];
+        }
+        if ($code >= 200 && $code < 300) {
+            $data = json_decode($resp, true);
+            if (!empty($data['url'])) {
+                return ['success' => true, 'url' => $data['url'], 'message' => ''];
+            }
+        }
+        // If the store rejected public access, retry as private.
+        if ($access === 'public' && strpos($resp, 'private store') !== false) {
+            error_log('Blob: store is private, retrying upload as private');
+            continue;
+        }
         error_log('Blob upload failed (HTTP ' . $code . '): ' . $resp);
         return ['success' => false, 'url' => '', 'message' => 'Upload failed (HTTP ' . $code . ')'];
     }
-    $data = json_decode($resp, true);
-    if (empty($data['url'])) {
-        error_log('Blob upload: no url in response: ' . $resp);
-        return ['success' => false, 'url' => '', 'message' => 'No URL returned'];
-    }
 
-    return ['success' => true, 'url' => $data['url'], 'message' => ''];
+    return ['success' => false, 'url' => '', 'message' => 'Upload failed'];
 }
 
 /**
