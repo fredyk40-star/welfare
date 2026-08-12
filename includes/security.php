@@ -10,7 +10,7 @@ $nonce = base64_encode(random_bytes(16));
        "script-src 'self' 'nonce-" . $nonce . "'; " .
        "style-src 'self' 'unsafe-inline'; " .
        "font-src 'self' data:; " .
-       "img-src 'self' data: blob:; " .
+       "img-src 'self' data: blob: https://*.blob.vercel-storage.com; " .
        "connect-src 'self'; " .
        "form-action 'self'; " .
        "frame-ancestors 'none';";
