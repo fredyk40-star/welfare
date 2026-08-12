@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $cleanup_query = "DELETE FROM password_resets WHERE expires_at < NOW()";
                     $db->exec($cleanup_query);
                     
-                    $token_query = "INSERT INTO password_resets (member_id, token, expires_at) ;
+                    $token_query = "INSERT INTO password_resets (member_id, token, expires_at)
                                     VALUES (:member_id, :token, :expires)";
                     $token_stmt = $db->prepare($token_query);
                     $token_stmt->execute([

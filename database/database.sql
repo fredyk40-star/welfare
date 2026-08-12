@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS members (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY member_id (member_id),
     UNIQUE KEY email (email),
+    UNIQUE KEY phone (phone),
     KEY idx_members_email (email),
     KEY idx_members_member_id (member_id),
     KEY idx_members_2fa (two_fa_secret)

@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $gender = cleanInput($_POST['gender']);
     $email = cleanInput($_POST['email']);
     $country_code = cleanInput($_POST['country_code']);
-    $phone = cleanInput($_POST['phone']);
+    $phone_raw = cleanInput($_POST['phone']);   // user-entered digits only, for form repopulation
     $address = cleanInput($_POST['address']);
     $occupation = isset($_POST['occupation']) ? cleanInput($_POST['occupation']) : null;
     $emergency_name = cleanInput($_POST['emergency_contact_name']);
@@ -28,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $consent = isset($_POST['consent']);
     
     $email = strtolower($email);
-    $phone = $country_code . ' ' . $phone;
+    $phone = $country_code . ' ' . $phone_raw;   // combined value used for validation + storage
     
     // Validate inputs
     $allowed_country_codes = ['+233', '+1', '+44', '+27', '+234', '+254', '+255', '+256', '+265', '+260', '+263', '+258', '+257', '+250', '+221', '+223', '+226', '+229', '+224', '+225', '+220', '+232', '+231'];
@@ -38,8 +38,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Invalid email format.';
     } elseif (!in_array($country_code, $allowed_country_codes, true)) {
         $error = 'Invalid country code selected.';
-    } elseif (!preg_match('/^[0-9\s]+$/', str_replace($country_code, '', $phone))) {
-        $error = 'Invalid phone number. Please enter digits only.';
+    } elseif (strpos($phone_raw, '+') !== false) {
+        $error = 'Please enter the phone number without the country code.';
+    } elseif (!preg_match('/^[0-9]{7,15}$/', $phone_raw)) {
+        $error = 'Phone number must be 7 to 15 digits.';
     } elseif ($password !== $confirm_password) {
         $error = 'Passwords do not match.';
     } elseif (($password_validation = validatePassword($password)) !== true) {
@@ -58,6 +60,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($check_stmt->rowCount() > 0) {
             $error = 'Email already registered.';
         } else {
+            // Check if phone already exists
+            $check_phone_query = "SELECT id FROM members WHERE phone = :phone";
+            $check_phone_stmt = $db->prepare($check_phone_query);
+            $check_phone_stmt->execute([':phone' => $phone]);
+
+            if ($check_phone_stmt->rowCount() > 0) {
+                $error = 'Phone number already registered.';
+            } else {
             // Handle photo upload
             $photo_filename = null;
             if (isset($_FILES['passport_photo']) && $_FILES['passport_photo']['error'] === UPLOAD_ERR_OK) {
@@ -111,6 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     error_log("Registration Error: " . $e->getMessage());
                 }
             }
+            }
         }
     }
 }
@@ -120,7 +131,7 @@ $dob = $dob ?? '';
 $gender = $gender ?? '';
 $email = $email ?? '';
 $country_code = $country_code ?? '+233';
-$phone = $phone ?? '';
+$phone = $phone_raw ?? '';   // repopulate with the raw digits, not the combined value
 $address = $address ?? '';
 $occupation = $occupation ?? '';
 $emergency_name = $emergency_name ?? '';
@@ -221,7 +232,7 @@ $emergency_phone = $emergency_phone ?? '';
                                     <div class="col-md-9 mb-3">
                                         <label for="phone" class="form-label">Phone Number *</label>
                                         <input type="tel" class="form-control" id="phone" name="phone" 
-                                               value="<?php echo htmlspecialchars($phone, ENT_QUOTES, 'UTF-8'); ?>" placeholder="XX XXX XXXX" required>
+                                                value="<?php echo htmlspecialchars($phone_raw ?? '', ENT_QUOTES, 'UTF-8'); ?>" placeholder="XX XXX XXXX" required>
                                     </div>
                                 </div>
                                 

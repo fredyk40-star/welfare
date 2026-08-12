@@ -39,3 +39,4 @@ DROP INDEX IF EXISTS idx_members_2fa ON members;
 CREATE INDEX idx_members_email ON members(email);
 CREATE INDEX idx_members_member_id ON members(member_id);
 CREATE INDEX idx_members_2fa ON members(two_fa_secret);
+CREATE INDEX idx_members_phone ON members(phone);
