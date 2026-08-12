@@ -63,7 +63,6 @@ function blobUploadFile($localPath, $filename, $mimeType = 'application/octet-st
         $resp = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err  = curl_error($ch);
-        curl_close($ch);
 
         if ($err) {
             error_log('Blob upload cURL error: ' . $err);
@@ -104,7 +103,7 @@ function blobDeleteUrl($value) {
         CURLOPT_TIMEOUT => 20
     ]);
     curl_exec($ch);
-    curl_close($ch);
+    // curl_close() deprecated since PHP 8.5; handle auto-released.
     return true;
 }
 
