@@ -357,51 +357,54 @@ function uploadPhoto($file) {
         return ['success' => false, 'message' => 'Upload failed. Error code: ' . ($file['error'] ?? 'unknown')];
     }
 
-    $target_dir = UPLOAD_DIR . 'photos/';
-    if (!file_exists($target_dir)) {
-        mkdir($target_dir, 0755, true);
-    }
-    
-    // Verify MIME type from file content, not just extension
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mime_type = finfo_file($finfo, $file["tmp_name"]);
-    finfo_close($finfo);
-    
-    $allowed_mimes = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif'];
-    
-    if (!isset($allowed_mimes[$mime_type])) {
-        return ['success' => false, 'message' => 'Invalid file type. Only JPG, JPEG, PNG & GIF files are allowed.'];
-    }
-    
-    $file_extension = $allowed_mimes[$mime_type];
-    $new_filename = bin2hex(random_bytes(16)) . '.' . $file_extension;
-    $target_file = $target_dir . $new_filename;
-    
-    // Check file size
+    // Check file size (before any disk I/O)
     if ($file["size"] > MAX_UPLOAD_SIZE) {
         return ['success' => false, 'message' => 'File is too large. Maximum size is 5MB.'];
     }
-    
-    if (move_uploaded_file($file["tmp_name"], $target_file)) {
-        $stored = $new_filename;
 
-        // On Vercel (Blob enabled), also push to durable object storage and
-        // store the public Blob URL in the DB so the photo survives the
-        // ephemeral /tmp filesystem. Locally we keep the plain filename.
-        if (blobIsEnabled()) {
-            $blob = blobUploadFile($target_file, $new_filename);
-            if ($blob['success']) {
-                $stored = $blob['url'];
-                @unlink($target_file); // local copy is ephemeral anyway
-            } else {
-                error_log('Blob upload failed, falling back to local path: ' . $blob['message']);
-            }
-        }
+    // Verify MIME type from file content, not just extension
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime_type = $finfo->file($file["tmp_name"]);
 
-        return ['success' => true, 'filename' => $stored];
-    } else {
-        return ['success' => false, 'message' => 'Error uploading file.'];
+    $allowed_mimes = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif'];
+
+    if (!isset($allowed_mimes[$mime_type])) {
+        return ['success' => false, 'message' => 'Invalid file type. Only JPG, JPEG, PNG & GIF files are allowed.'];
     }
+
+    $file_extension = $allowed_mimes[$mime_type];
+    $new_filename = bin2hex(random_bytes(16)) . '.' . $file_extension;
+
+    // When Vercel Blob is configured, upload straight to object storage over
+    // HTTP and store the public Blob URL. This avoids the read-only local
+    // filesystem entirely (no mkdir/move_uploaded_file on /var/task).
+    if (blobIsEnabled()) {
+        $blob = blobUploadFile($file["tmp_name"], $new_filename, $mime_type);
+        if ($blob['success']) {
+            return ['success' => true, 'filename' => $blob['url']];
+        }
+        // On Blob failure, fall through to local-disk attempt only if the
+        // filesystem is writable (local dev); on Vercel this will still warn,
+        // but the error is surfaced clearly instead of silently losing the file.
+        error_log('Blob upload failed: ' . $blob['message']);
+        return ['success' => false, 'message' => 'Could not store upload. Please try again.'];
+    }
+
+    // Local development fallback (writable disk)
+    $target_dir = UPLOAD_DIR . 'photos/';
+    if (!file_exists($target_dir)) {
+        if (!@mkdir($target_dir, 0755, true) && !is_dir($target_dir)) {
+            return ['success' => false, 'message' => 'Server upload directory is not writable.'];
+        }
+    }
+
+    $target_file = $target_dir . $new_filename;
+
+    if (move_uploaded_file($file["tmp_name"], $target_file)) {
+        return ['success' => true, 'filename' => $new_filename];
+    }
+
+    return ['success' => false, 'message' => 'Error uploading file.'];
 }
 
 // TOTP / 2FA helpers (RFC 6238, HMAC-SHA1)
