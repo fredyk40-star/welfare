@@ -9,7 +9,7 @@
     if (css && !css.sheet) {
         const fallback = document.createElement('link');
         fallback.rel = 'stylesheet';
-        fallback.href = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css';
+        fallback.href = '/assets/bootstrap/css/bootstrap.min.css';
         document.head.appendChild(fallback);
     }
 
@@ -18,7 +18,7 @@
     // CDN so data-bs-* handlers work.
     if (!(window.bootstrap && typeof bootstrap.Collapse !== 'undefined')) {
         const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js';
+        s.src = '/assets/bootstrap/js/bootstrap.bundle.min.js';
         document.head.appendChild(s);
     }
 })();

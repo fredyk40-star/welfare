@@ -7,11 +7,11 @@ if (session_status() === PHP_SESSION_NONE) {
 // Content Security Policy with nonce for inline scripts
 $nonce = base64_encode(random_bytes(16));
     $csp = "default-src 'self'; " .
-       "script-src 'self' 'nonce-" . $nonce . "' https://cdn.jsdelivr.net; " .
+       "script-src 'self' 'nonce-" . $nonce . "'; " .
        "style-src 'self' 'unsafe-inline'; " .
        "font-src 'self' data:; " .
        "img-src 'self' data: blob:; " .
-       "connect-src 'self' https://cdn.jsdelivr.net; " .
+       "connect-src 'self'; " .
        "form-action 'self'; " .
        "frame-ancestors 'none';";
 header("Content-Security-Policy: " . $csp);

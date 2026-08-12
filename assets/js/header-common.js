@@ -4,8 +4,8 @@
 (function () {
     'use strict';
 
-    const BOOTSTRAP_CSS = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css';
-    const BOOTSTRAP_JS  = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js';
+    const BOOTSTRAP_CSS = '/assets/bootstrap/css/bootstrap.min.css';
+    const BOOTSTRAP_JS  = '/assets/bootstrap/js/bootstrap.bundle.min.js';
 
     // Bootstrap CSS CDN fallback
     const css = document.querySelector('link[href*="bootstrap.min.css"]');
