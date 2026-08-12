@@ -16,15 +16,21 @@ function blobIsEnabled() {
 }
 
 /**
- * Upload a local/temp file to Vercel Blob using the supported two-step
- * server-upload REST API (same flow as @vercel/blob put()):
- *   1. POST to https://blob.vercel-storage.com with the store token to get a
- *      presigned upload URL + short-lived upload token.
- *   2. PUT the raw bytes to that presigned URL.
+ * Upload a local/temp file to Vercel Blob via the server-upload REST API
+ * (the same single PUT that @vercel/blob put() performs):
+ *   PUT https://vercel.com/api/blob/?pathname=photos/<file>
+ *     Authorization: Bearer <BLOB_READ_WRITE_TOKEN>
+ *     x-api-version: 12
+ *     x-vercel-blob-access: private   (store is private)
+ *     x-content-type: <mime>
+ *     x-add-random-suffix: 1
+ *     body = raw bytes
  * Returns ['success'=>bool,'url'=>string,'message'=>string].
  */
 function blobUploadFile($localPath, $filename, $mimeType = 'application/octet-stream') {
     $token = getenv('BLOB_READ_WRITE_TOKEN');
+    // Strip wrapping quotes that can end up in env files (e.g. "vercel_blob_...").
+    $token = preg_replace('/^"(.*)"$/', '$1', (string) $token);
     if (empty($token)) {
         return ['success' => false, 'url' => '', 'message' => 'Blob not configured'];
     }
@@ -32,23 +38,23 @@ function blobUploadFile($localPath, $filename, $mimeType = 'application/octet-st
         return ['success' => false, 'url' => '', 'message' => 'Source file missing'];
     }
 
-    $body = json_encode([
-        'pathname'        => 'photos/' . $filename,
-        'addRandomSuffix' => false,
-    ]);
+    $pathname = 'photos/' . $filename;
+    $url = 'https://vercel.com/api/blob/?pathname=' . urlencode($pathname);
+    $content = file_get_contents($localPath);
 
-    // Step 1: request a presigned upload URL
-    $ch = curl_init('https://blob.vercel-storage.com');
+    $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_HTTPHEADER => [
             'Authorization: Bearer ' . $token,
-            'Content-Type: application/json',
-            'x-api-version: 6',
+            'x-api-version: 12',
+            'x-vercel-blob-access: private',
+            'x-content-type: ' . $mimeType,
+            'x-add-random-suffix: 1',
         ],
-        CURLOPT_POST       => true,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT    => 30,
-        CURLOPT_POSTFIELDS => $body,
+        CURLOPT_CUSTOMREQUEST   => 'PUT',
+        CURLOPT_RETURNTRANSFER  => true,
+        CURLOPT_TIMEOUT         => 30,
+        CURLOPT_POSTFIELDS      => $content,
     ]);
     $resp = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -56,46 +62,17 @@ function blobUploadFile($localPath, $filename, $mimeType = 'application/octet-st
     curl_close($ch);
 
     if ($err) {
-        error_log('Blob presign cURL error: ' . $err);
+        error_log('Blob upload cURL error: ' . $err);
         return ['success' => false, 'url' => '', 'message' => $err];
     }
     if ($code < 200 || $code >= 300) {
-        error_log('Blob presign failed (HTTP ' . $code . '): ' . $resp);
-        return ['success' => false, 'url' => '', 'message' => 'Presign failed'];
+        error_log('Blob upload failed (HTTP ' . $code . '): ' . $resp);
+        return ['success' => false, 'url' => '', 'message' => 'Upload failed (HTTP ' . $code . ')'];
     }
     $data = json_decode($resp, true);
-    if (empty($data['url']) || empty($data['token'])) {
-        error_log('Blob presign: missing url/token in response: ' . $resp);
-        return ['success' => false, 'url' => '', 'message' => 'No presigned URL returned'];
-    }
-
-    // Step 2: PUT the bytes to the presigned URL
-    $content = file_get_contents($localPath);
-    $ch = curl_init($data['url']);
-    curl_setopt_array($ch, [
-        CURLOPT_HTTPHEADER => [
-            'Authorization: Bearer ' . $data['token'],
-            'Content-Type: ' . $mimeType,
-            'x-api-version: 6',
-            'content-type: ' . $mimeType,
-        ],
-        CURLOPT_CUSTOMREQUEST  => 'PUT',
-        CURLOPT_RETURNTRANSFER  => true,
-        CURLOPT_TIMEOUT         => 30,
-        CURLOPT_POSTFIELDS      => $content,
-    ]);
-    $putResp = curl_exec($ch);
-    $putCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $putErr  = curl_error($ch);
-    curl_close($ch);
-
-    if ($putErr) {
-        error_log('Blob PUT cURL error: ' . $putErr);
-        return ['success' => false, 'url' => '', 'message' => $putErr];
-    }
-    if ($putCode < 200 || $putCode >= 300) {
-        error_log('Blob PUT failed (HTTP ' . $putCode . '): ' . $putResp);
-        return ['success' => false, 'url' => '', 'message' => 'Upload failed'];
+    if (empty($data['url'])) {
+        error_log('Blob upload: no url in response: ' . $resp);
+        return ['success' => false, 'url' => '', 'message' => 'No URL returned'];
     }
 
     return ['success' => true, 'url' => $data['url'], 'message' => ''];
