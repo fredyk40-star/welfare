@@ -1,10 +1,13 @@
 <?php
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/security.php';
 
-// Check if user is member
+// Check if user is member (must run before header.php outputs HTML)
 if (!isMember()) {
     redirectTo('/member/login.php');
 }
+
+require_once __DIR__ . '/../includes/header.php';
 
 $database = new Database();
 $db = $database->getConnection();

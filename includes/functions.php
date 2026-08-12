@@ -341,7 +341,13 @@ function sendReceiptEmail($member_email, $receipt_data, $member_photo = null) {
 }
 
 function redirectTo($url) {
-    header("Location: " . APP_URL . $url);
+    $target = APP_URL . $url;
+    if (!headers_sent()) {
+        header('Location: ' . $target);
+        exit();
+    }
+    // Fallback when output already started: redirect via JavaScript.
+    echo '<script>window.location.href = ' . json_encode($target) . ';</script>';
     exit();
 }
 

@@ -207,7 +207,12 @@ function logout($redirect = '../member/login.php') {
     if (!in_array($redirect, $safe_redirects)) {
         $redirect = '/index.html'; // Default to safe redirect;
     }
-    header('Location: ' . APP_URL . $redirect);
+    if (!headers_sent()) {
+        header('Location: ' . APP_URL . $redirect);
+        exit();
+    }
+    // Fallback when output already started: redirect via JavaScript.
+    echo '<script>window.location.href = ' . json_encode(APP_URL . $redirect) . ';</script>';
     exit();
 }
 

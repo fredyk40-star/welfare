@@ -1,10 +1,13 @@
 <?php
-require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/security.php';
 
 // Check if user is logged in
 if (!isLoggedIn()) {
     redirectTo('/member/login.php');
 }
+
+require_once __DIR__ . '/../includes/header.php';
 
 $database = new Database();
 $db = $database->getConnection();
