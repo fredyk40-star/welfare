@@ -1017,9 +1017,12 @@ function refreshMemberContext(memberId) {
             const ytd = parseFloat(m.ytd_paid || 0);
             const target = parseFloat(m.annual_target || 0);
             const pct = target > 0 ? Math.min(100, Math.round((ytd / target) * 100)) : 0;
-            document.getElementById('memberProgress').style.display = 'block';
-            document.getElementById('memberProgressBar').style.width = pct + '%';
-            document.getElementById('memberProgressText').textContent =
+            const el = document.getElementById('memberProgress');
+            if (el) el.style.display = 'block';
+            const bar = document.getElementById('memberProgressBar');
+            if (bar) bar.style.width = pct + '%';
+            const txt = document.getElementById('memberProgressText');
+            if (txt) txt.textContent =
                 'GH₵ ' + ytd.toFixed(2) + ' of GH₵ ' + target.toFixed(2) + ' (' + pct + '%)';
         })
         .catch(() => {});
@@ -1028,6 +1031,7 @@ function refreshMemberContext(memberId) {
 
 function checkDuplicate(memberId, month, year) {
     const box = document.getElementById('dupWarning');
+    if (!box) return;
     if (!memberId || !month || !year) { box.style.display = 'none'; return; }
     fetch('<?php echo APP_URL; ?>/api/transactions.php?action=check_duplicate&member_id=' +
         encodeURIComponent(memberId) + '&month=' + encodeURIComponent(month) + '&year=' + encodeURIComponent(year))
@@ -1252,8 +1256,8 @@ function loadBrowseMembers(term) {
     const loading = document.getElementById('browseMembersLoading');
     const empty = document.getElementById('browseMembersEmpty');
     if (!grid) return;
-    loading.style.display = 'block';
-    empty.style.display = 'none';
+    if (loading) loading.style.display = 'block';
+    if (empty) empty.style.display = 'none';
     grid.innerHTML = '';
     const url = '<?php echo APP_URL; ?>/api/members.php?action=list' +
         (term ? '&term=' + encodeURIComponent(term) : '');
