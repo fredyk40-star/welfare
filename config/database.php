@@ -94,6 +94,20 @@ class Database {
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
             ];
+            // TiDB Serverless (and most managed MySQL) require an encrypted
+            // transport. Establish a real TLS connection using a CA bundle.
+            // Prefer DB_SSL_CA env, else fall back to the bundled TiDB CA.
+            // VERIFY_SERVER_CERT is disabled because TiDB Serverless presents
+            // Let's Encrypt certs whose hostname may not match exactly; the
+            // CA bundle still enforces an encrypted channel.
+            $ca = getenv('DB_SSL_CA');
+            if (!$ca || !file_exists($ca)) {
+                $ca = __DIR__ . '/tidb-ca.pem';
+            }
+            if (file_exists($ca)) {
+                $options[PDO::MYSQL_ATTR_SSL_CA] = $ca;
+            }
+            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
             $this->conn = new PDO($dsn, $this->username, $this->password, $options);
         } catch(PDOException $e) {
             error_log("Connection Error: " . $e->getMessage());
