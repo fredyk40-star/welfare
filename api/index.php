@@ -103,4 +103,12 @@ if (!in_array($top, $allowedTop, true)) {
     exit;
 }
 
+// Never cache PHP pages: they are dynamic and auth-gated. Without this, browsers
+// and edge CDNs can serve a stale HTML shell (e.g. an old transactions.php whose
+// member-selection used broken inline onclick) even after a new deploy, so fixes
+// to client-side JS never reach the user until they manually clear the cache.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 require_once $fullPath;
