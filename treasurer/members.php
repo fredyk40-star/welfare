@@ -123,22 +123,22 @@ $annual_target = $settings['annual_amount'];
                                     </td>
                                     <td>
                                         <div class="btn-group">
-                                            <button class="btn btn-sm btn-info" 
-                                                    data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>" 
-                                                    data-member-name="<?php echo htmlspecialchars($member['full_name']); ?>" 
-                                                    data-action="view">
-                                                View
-                                            </button>
+                                            <a href="/treasurer/member_detail.php?member_id=<?php echo urlencode($member['member_id']); ?>" 
+                                               class="btn btn-sm btn-info">
+                                                 View
+                                            </a>
                                             <button class="btn btn-sm btn-primary" 
                                                     data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>" 
                                                     data-member-name="<?php echo htmlspecialchars($member['full_name']); ?>" 
                                                     data-action="pay">
                                                 Pay
                                             </button>
-                                            <a href="statement.php?member_id=<?php echo htmlspecialchars($member['member_id']); ?>" 
-                                               class="btn btn-sm btn-outline-success" target="_blank">
+                                            <button class="btn btn-sm btn-outline-success" 
+                                                    data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>" 
+                                                    data-member-name="<?php echo htmlspecialchars($member['full_name']); ?>"
+                                                    data-action="statement">
                                                 Statement
-                                            </a>
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -201,139 +201,8 @@ $annual_target = $settings['annual_amount'];
 </div>
 
 <script nonce="<?php echo CSP_NONCE; ?>">
-function viewMemberDetails(memberId) {
-    const modalEl = document.getElementById('memberDetailsModal');
-    const contentEl = document.getElementById('memberDetailsContent');
-    
-    // Clean up any stuck backdrops BEFORE opening new modal
-    document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
-    document.body.classList.remove('modal-open');
-    document.body.style.overflow = '';
-    document.body.style.paddingRight = '';
-    
-    contentEl.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
-    
-    if (!window._memberDetailsModalInstance) {
-        window._memberDetailsModalInstance = new bootstrap.Modal(modalEl);
-    }
-    window._memberDetailsModalInstance.show();
-    
-    fetch(`<?php echo APP_URL; ?>/api/members.php?action=details&member_id=${memberId}`)
-        .then(response => response.json())
-        .then(data => {
-            if (!data.success) {
-                contentEl.innerHTML = '<div class="alert alert-danger">Failed to load member details.</div>';
-                return;
-            }
-            const member = data.member;
-            const escapeHtml = (str) => {
-                if (!str && str !== '') return '';
-                return String(str).replace(/[&<>'"]/g, tag =>
-                    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
-                );
-            };
-            const safePhoto = member.passport_photo ? escapeHtml(String(member.passport_photo).replace(/^.*[\\\/]/, '')) : '';
-            const photoUrl = (p) => { if (!p) return ''; p = String(p); return p.indexOf('http') === 0 ? p : '<?php echo APP_URL; ?>/uploads/photos/' + p; };
-
-            let html = `
-                <div class="row">
-                    <div class="col-md-4 text-center">
-                        ${safePhoto ?
-                            `<img src="${photoUrl(safePhoto)}"
-                                  class="img-fluid rounded mb-3" style="max-width: 200px;">` :
-                            '<div class="bg-secondary text-white rounded p-5 mb-3">No Photo</div>'}
-                        <h5>${escapeHtml(member.full_name)}</h5>
-                        <p class="text-muted">${escapeHtml(member.member_id)}</p>
-                    </div>
-                    <div class="col-md-8">
-                        <table class="table">
-                            <tr><td><strong>Email:</strong></td><td>${escapeHtml(member.email)}</td></tr>
-                            <tr><td><strong>Phone:</strong></td><td>${escapeHtml(member.phone)}</td></tr>
-                            <tr><td><strong>Date of Birth:</strong></td><td>${escapeHtml(member.dob)}</td></tr>
-                            <tr><td><strong>Gender:</strong></td><td>${escapeHtml(member.gender)}</td></tr>
-                            <tr><td><strong>Address:</strong></td><td>${escapeHtml(member.address)}</td></tr>
-                            <tr><td><strong>Occupation:</strong></td><td>${escapeHtml(member.occupation || 'N/A')}</td></tr>
-                            <tr><td><strong>Emergency Contact:</strong></td><td>${escapeHtml(member.emergency_contact_name)} (${escapeHtml(member.emergency_contact_relationship)}) - ${escapeHtml(member.emergency_contact_phone)}</td></tr>
-                            <tr><td><strong>Registered:</strong></td><td>${new Date(member.created_at).toLocaleDateString()}</td></tr>
-                        </table>
-                    </div>
-                </div>
-            `;
-            contentEl.innerHTML = html;
-        })
-        .catch(() => {
-            contentEl.innerHTML = '<div class="alert alert-danger">Failed to load member details.</div>';
-        });
-}
-
 function recordPayment(memberId, memberName) {
-    // Redirect to transactions page where the payment modal actually exists
     window.location.href = `<?php echo APP_URL; ?>/treasurer/transactions.php?action=new&member_id=${memberId}&member_name=${encodeURIComponent(memberName)}`;
 }
-
-document.addEventListener('DOMContentLoaded', function() {
-    var printBtn = document.getElementById('printMembersListBtn');
-    if (printBtn) { printBtn.addEventListener('click', window.print); }
-    
-    document.querySelectorAll('[data-action="view"]').forEach(function(btn) {
-        btn.addEventListener('click', function() { viewMemberDetails(this.dataset.memberId); });
-    });
-    document.querySelectorAll('[data-action="pay"]').forEach(function(btn) {
-        btn.addEventListener('click', function() { recordPayment(this.dataset.memberId, this.dataset.memberName); });
-    });
-
-    // Import CSV form handler
-    const importForm = document.getElementById('importCsvForm');
-    if (importForm) {
-        importForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const btn = this.querySelector('button[type="submit"]');
-            const resultDiv = document.getElementById('importResult');
-            const originalText = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = 'Importing...';
-            resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-primary me-2"></div>Importing...';
-            
-            const formData = new FormData(this);
-            fetch('<?php echo APP_URL; ?>/api/members.php?action=import_csv', {
-                method: 'POST',
-                body: formData
-            })
-            .then(r => r.json())
-            .then(d => {
-                btn.disabled = false;
-                btn.textContent = '📥 Import Members';
-                if (d.success) {
-                    let html = '<div class="alert alert-success"><strong>Imported: ' + d.imported + '</strong>, Skipped: ' + d.skipped;
-                    if (d.errors && d.errors.length) {
-                        html += '<ul class="mb-0 mt-2 small">';
-                        d.errors.forEach(e => { html += '<li>' + e + '</li>'; });
-                        html += '</ul>';
-                    }
-                    if (d.generated && Object.keys(d.generated).length) {
-                        html += '<hr class="my-2"><strong>Generated passwords (share with members):</strong><ul class="mb-0 mt-2 small">';
-                        for (const [mid, pwd] of Object.entries(d.generated)) {
-                            html += '<li><code>' + mid + '</code>: <code>' + pwd + '</code></li>';
-                        }
-                        html += '</ul>';
-                    }
-                    html += '</div>';
-                    resultDiv.innerHTML = html;
-                    if (d.imported > 0) {
-                        setTimeout(() => location.reload(), 2000);
-                    }
-                } else {
-                    resultDiv.innerHTML = '<div class="alert alert-danger">Failed: ' + (d.message || 'Import failed') + '</div>';
-                }
-            })
-            .catch(() => {
-                btn.disabled = false;
-                btn.textContent = '📥 Import Members';
-                resultDiv.innerHTML = '<div class="alert alert-danger">Network error</div>';
-            });
-        });
-    });
-});
-</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

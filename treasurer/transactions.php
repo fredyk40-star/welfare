@@ -605,6 +605,25 @@ function sortIcon($field, $currentField, $currentDir) {
     </div>
 </div>
 
+<!-- Receipt Modal -->
+<div class="modal fade" id="receiptModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Payment Receipt</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="receiptContent">
+                <!-- Loaded dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="printReceiptFromModal">🖨️ Print Receipt</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Recurring Late Payers Alert -->
 <?php
 $late_payers = [];
@@ -973,14 +992,55 @@ var clearBtn = document.getElementById('clearMemberBtn');
     }
 });
 
+function showReceipt(transactionId, printMode = false) {
+    const modalEl = document.getElementById('receiptModal');
+    const contentEl = document.getElementById('receiptContent');
+    
+    // Clean up any stuck backdrops BEFORE opening new modal
+    document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
+    document.body.classList.remove('modal-open');
+    document.body.style.overflow = '';
+    document.body.style.paddingRight = '';
+    
+    contentEl.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+    
+    if (!window._receiptModalInstance) {
+        window._receiptModalInstance = new bootstrap.Modal(modalEl);
+    }
+    window._receiptModalInstance.show();
+    
+    // Fetch the receipt HTML
+    const url = `${APP_BASE}/api/transactions.php?action=receipt&id=${transactionId}`;
+    fetch(url)
+        .then(response => response.text())
+        .then(html => {
+            // Extract just the receipt content (remove html/head/body tags)
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const receiptBody = doc.querySelector('.receipt');
+            
+            if (receiptBody) {
+                contentEl.innerHTML = receiptBody.outerHTML;
+                
+                // If print mode, trigger print dialog
+                if (printMode) {
+                    setTimeout(() => window.print(), 500);
+                }
+            } else {
+                contentEl.innerHTML = '<div class="alert alert-danger">Failed to load receipt.</div>';
+            }
+        })
+        .catch(() => {
+            contentEl.innerHTML = '<div class="alert alert-danger">Failed to load receipt.</div>';
+        });
+}
+
 function viewReceipt(transactionId) {
-    window.open(`${APP_BASE}/api/transactions.php?action=receipt&id=${transactionId}`,
-                'Receipt', 'width=600,height=400');
+    showReceipt(transactionId, false);
 }
 
 function printReceipt(transactionId) {
-    window.open(`${APP_BASE}/api/transactions.php?action=receipt&id=${transactionId}&print=1`,
-        'Receipt', 'width=600,height=400');
+    showReceipt(transactionId, true);
 }
 
 // Pre-select member when redirected from members page with ?member_id=...&member_name=...
@@ -1547,6 +1607,17 @@ document.addEventListener('DOMContentLoaded', function() {
     var confirmVoidBtn = document.getElementById('confirmVoidBtn');
     if (confirmVoidBtn) { confirmVoidBtn.addEventListener('click', confirmVoid); }
     
+    // Print receipt button inside the modal
+    var printReceiptFromModalBtn = document.getElementById('printReceiptFromModal');
+    if (printReceiptFromModalBtn) { 
+        printReceiptFromModalBtn.addEventListener('click', function() {
+            const transactionId = this.dataset.transactionId;
+            if (transactionId) {
+                window.print();
+            }
+        });
+    }
+    
     // Single document-level delegation for all [data-action] buttons. This covers
     // both the static row buttons (View/Print/Void/Details) AND buttons injected
     // later into the Transaction Details modal (Print/History), which the old
@@ -1556,9 +1627,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!b) return;
         var a = b.getAttribute('data-action');
         if (a === 'view') {
-            viewReceipt(b.dataset.transactionId);
+            showReceipt(b.dataset.transactionId, false);
         } else if (a === 'print') {
-            printReceipt(b.dataset.transactionId);
+            showReceipt(b.dataset.transactionId, true);
         } else if (a === 'void') {
             voidTransaction(b.dataset.transactionId);
         } else if (a === 'details') {
@@ -1613,5 +1684,3 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 }
 </style>
-
-<?php require_once __DIR__ . '/../includes/footer.php'; ?> 

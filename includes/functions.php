@@ -363,7 +363,6 @@ function sendEmail($to, $subject, $message, $cc = null) {
     $response = curl_exec($ch);
     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curl_error = curl_error($ch);
-    curl_close($ch);
 
     if ($curl_error) {
         error_log('sendEmail cURL error: ' . $curl_error);

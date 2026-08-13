@@ -1,4 +1,4 @@
-﻿/* GYF Welfare Management System - Glassmorphism Styles */
+/* GYF Welfare Management System - Glassmorphism Styles */
 
 /* Local Inter font faces — self-hosted to eliminate external font requests */
 @font-face {
@@ -52,7 +52,7 @@
     --glass-bg-strong: rgba(255, 255, 255, 0.12);
     --glass-border: rgba(255, 255, 255, 0.18);
     --glass-shadow: rgba(0, 0, 0, 0.25);
-    --glass-blur: blur(20px);
+    --glass-blur: blur(15px);
     
     /* Text Colors */
     --text-primary: rgba(12, 12, 12, 0.95);
@@ -666,11 +666,11 @@ a:hover {
 
 /* Modals */
 .modal-backdrop {
-    z-index: 1050 !important;
+    z-index: 1040 !important;
 }
 
 .modal {
-    z-index: 1055 !important;
+    z-index: 1050 !important;
 }
 
 .modal-content {
@@ -998,13 +998,6 @@ a:hover {
     }
 }
 
-/* Fix for row animation not hiding content when JS is disabled */
-.row {
-    animation: fadeIn 0.6s ease-out;
-    opacity: 1 !important;
-    transform: none !important;
-}
-
 /* Print Styles */
 @media print {
     .navbar, .btn, .no-print {
@@ -1081,25 +1074,6 @@ a:hover {
 
 .rounded {
     border-radius: 15px !important;
-}
-
-/* Page transition animations */
-.row {
-    animation: fadeIn 0.6s ease-out;
-    opacity: 1 !important;
-    transform: none !important;
-}
-
-.row:nth-child(2) {
-    animation-delay: 0.1s;
-}
-
-.row:nth-child(3) {
-    animation-delay: 0.2s;
-}
-
-.row:nth-child(4) {
-    animation-delay: 0.3s;
 }
 
 /* Card inner elements */

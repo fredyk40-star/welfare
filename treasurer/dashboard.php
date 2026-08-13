@@ -221,7 +221,7 @@ try {
                         </thead>
                         <tbody id="defaultersBody">
                             <?php if (empty($defaulters)): ?>
-                                <tr id="emptyRow"><td colspan="3" class="text-center text-muted py-4">All members have paid!</td></tr>
+                                <tr id="emptyRow"><td colspan="3" class="text-center text-success fw-bold py-4">All members have paid!</td></tr>
                             <?php else: ?>
                                 <?php foreach ($defaulters as $d): ?>
                                     <tr data-member-id="<?php echo htmlspecialchars($d['member_id']); ?>">
@@ -234,7 +234,7 @@ try {
                                             <br><small><?php echo htmlspecialchars($d['email']); ?></small>
                                         </td>
                                         <td class="text-end">
-                                            <button class="btn btn-sm btn-outline-primary sendReminderBtn" 
+                                            <button class="btn btn-sm btn-primary sendReminderBtn" 
                                                     data-member-id="<?php echo htmlspecialchars($d['member_id']); ?>"
                                                     data-member-name="<?php echo htmlspecialchars($d['full_name']); ?>"
                                                     data-member-email="<?php echo htmlspecialchars($d['email']); ?>">

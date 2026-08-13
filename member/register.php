@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (!$error) {
                 // Generate member ID
-                $member_id = generateMemberID();
+                $member_id = generateMemberId($db);
                 
                 // Hash password
                 $hashed_password = password_hash($password, PASSWORD_BCRYPT);
