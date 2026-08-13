@@ -50,43 +50,12 @@ if (!class_exists('DatabaseSessionHandler')) {
             }
         }
 
-        public function open($path, $name) { return (bool) $this->ensureTable(); }
-        public function close() { return true; }
-        public function read($id)
-        {
-            $db = $this->ensureTable();
-            if (!$db) return '';
-            $stmt = $db->prepare("SELECT data FROM sessions WHERE id = :id");
-            $stmt->execute([':id' => $id]);
-            $row = $stmt->fetch();
-            return $row ? (string) $row['data'] : '';
-        }
-        public function write($id, $data)
-        {
-            $db = $this->ensureTable();
-            if (!$db) return false;
-            $stmt = $db->prepare(
-                "REPLACE INTO sessions (id, data, last_activity) VALUES (:id, :data, :la)"
-            );
-            $stmt->execute([':id' => $id, ':data' => $data, ':la' => time()]);
-            return true;
-        }
-        public function destroy($id)
-        {
-            $db = $this->ensureTable();
-            if (!$db) return false;
-            $stmt = $db->prepare("DELETE FROM sessions WHERE id = :id");
-            $stmt->execute([':id' => $id]);
-            return true;
-        }
-        public function gc($maxlifetime)
-        {
-            $db = $this->ensureTable();
-            if (!$db) return false;
-            $stmt = $db->prepare("DELETE FROM sessions WHERE last_activity < :cut");
-            $stmt->execute([':cut' => time() - (int) $maxlifetime]);
-            return true;
-        }
+        public function open($path, $name): bool { return (bool) $this->ensureTable(); }
+        public function close(): bool { return true; }
+        public function read($id): string|false { $db = $this->ensureTable(); if (!$db) return false; $stmt = $db->prepare("SELECT data FROM sessions WHERE id = :id"); $stmt->execute([':id' => $id]); $row = $stmt->fetch(); return $row ? (string) $row['data'] : ''; }
+        public function write($id, $data): bool { $db = $this->ensureTable(); if (!$db) return false; $stmt = $db->prepare("REPLACE INTO sessions (id, data, last_activity) VALUES (:id, :data, :la)"); $stmt->execute([':id' => $id, ':data' => $data, ':la' => time()]); return true; }
+        public function destroy($id): bool { $db = $this->ensureTable(); if (!$db) return false; $stmt = $db->prepare("DELETE FROM sessions WHERE id = :id"); $stmt->execute([':id' => $id]); return true; }
+        public function gc($maxlifetime): int { $db = $this->ensureTable(); if (!$db) return 0; $stmt = $db->prepare("DELETE FROM sessions WHERE last_activity < :cut"); $stmt->execute([':cut' => time() - (int) $maxlifetime]); return $stmt->rowCount(); }
         public function create_sid() { return ''; }
         public function validateId($id) { return true; }
     }

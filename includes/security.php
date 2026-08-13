@@ -1,8 +1,6 @@
 <?php
 // ensures session is started and functions.php is loaded
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+
 
 // Content Security Policy with nonce for inline scripts
 $nonce = base64_encode(random_bytes(16));
