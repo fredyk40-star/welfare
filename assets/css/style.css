@@ -1,4 +1,4 @@
-/* GYF Welfare Management System - Glassmorphism Styles */
+﻿/* GYF Welfare Management System - Glassmorphism Styles */
 
 /* Local Inter font faces — self-hosted to eliminate external font requests */
 @font-face {
@@ -52,7 +52,7 @@
     --glass-bg-strong: rgba(255, 255, 255, 0.12);
     --glass-border: rgba(255, 255, 255, 0.18);
     --glass-shadow: rgba(0, 0, 0, 0.25);
-    --glass-blur: blur(15px);
+    --glass-blur: blur(5px);
     
     /* Text Colors */
     --text-primary: rgba(12, 12, 12, 0.95);

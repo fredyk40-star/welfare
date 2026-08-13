@@ -61,6 +61,9 @@ require_once __DIR__ . '/security.php';
                             <li class="nav-item">
                                 <a class="nav-link" href="<?php echo APP_URL; ?>/treasurer/settings.php">Settings</a>
                             </li>
+                            <li class="nav-item">
+                                <a class="nav-link" href="<?php echo APP_URL; ?>/treasurer/help.php">Help</a>
+                            </li>
                         <?php elseif (isMember()): ?>
                             <li class="nav-item">
                                 <a class="nav-link" href="<?php echo APP_URL; ?>/member/dashboard.php">Dashboard</a>
