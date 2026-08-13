@@ -7,7 +7,10 @@ header('Content-Type: application/json');
 $database = new Database();
 $db = $database->getConnection();
 
-$action = isset($_GET['action']) ? cleanInput($_GET['action']) : '';
+// Accept `action` from either the query string (GET) or the POST body. Most
+// actions pass it in the URL, but batch_payment sends it inside the FormData
+// body, so without the POST fallback it always hit the `default` "Invalid action" case.
+$action = cleanInput($_GET['action'] ?? $_POST['action'] ?? '');
 
 switch ($action) {
     case 'check_duplicate':
