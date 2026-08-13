@@ -399,6 +399,7 @@ switch ($action) {
         
         $success_count = 0;
         $fail_count = 0;
+        $failures = []; // per-member failure reasons, returned to the UI
         
         // CRITICAL FIX: Wrap batch payment in transaction for atomicity
         $receipt_jobs = []; // emails queued during the transaction, sent after commit
@@ -410,10 +411,10 @@ switch ($action) {
                 if (empty($mid)) continue;
                 $member_check = $db->prepare("SELECT id FROM members WHERE member_id = :mid");
                 $member_check->execute([':mid' => $mid]);
-                if (!$member_check->fetch()) { $fail_count++; continue; }
+                if (!$member_check->fetch()) { $fail_count++; $failures[] = ['member_id' => $mid, 'reason' => 'Member ID not found']; continue; }
                 $dup_check = $db->prepare("SELECT id FROM transactions WHERE member_id = :mid AND billing_cycle_month = :m AND billing_cycle_year = :y AND status != 'void'");
                 $dup_check->execute([':mid' => $mid, ':m' => $billing_month, ':y' => $billing_year]);
-                if ($dup_check->fetch()) { $fail_count++; continue; }
+                if ($dup_check->fetch()) { $fail_count++; $failures[] = ['member_id' => $mid, 'reason' => 'Already recorded for this billing cycle']; continue; }
                 
                 // Annual limit check per member
                 $yearly_stmt = $db->prepare("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE member_id = :mid AND billing_cycle_year = :y AND status != 'void'");
@@ -423,7 +424,10 @@ switch ($action) {
                 $settings_stmt->execute();
                 $settings = $settings_stmt->fetch();
                 $annual_limit = $settings ? $settings['annual_amount'] : 0;
-                if (($yearly_total + $amount) > $annual_limit) { $fail_count++; continue; }
+                // Match the single "Record Payment" behaviour: only enforce the limit
+                // when one is actually configured. Previously a missing/zero annual_amount
+                // (the default) made EVERY batch payment fail the limit check.
+                if ($annual_limit > 0 && ($yearly_total + $amount) > $annual_limit) { $fail_count++; $failures[] = ['member_id' => $mid, 'reason' => 'Annual limit exceeded']; continue; }
                 
                 $receipt_no = generateReceiptNumber();
                 $insert = $db->prepare("INSERT INTO transactions (receipt_no, member_id, treasurer_id, amount, payment_method, billing_cycle_month, billing_cycle_year, notes, transaction_date) VALUES (:receipt_no, :member_id, :treasurer_id, :amount, :payment_method, :billing_month, :billing_year, :notes, :transaction_date)");
@@ -446,6 +450,7 @@ switch ($action) {
                     $receipt_jobs[] = ['mid' => $mid, 'receipt_no' => $receipt_no];
                 } else {
                     $fail_count++;
+                    $failures[] = ['member_id' => $mid, 'reason' => 'Could not save transaction'];
                 }
             }
             
@@ -485,7 +490,7 @@ switch ($action) {
             }
         }
         
-        echo json_encode(['success' => true, 'message' => "Batch complete: {$success_count} recorded, {$fail_count} failed", 'success_count' => $success_count, 'fail_count' => $fail_count]);
+        echo json_encode(['success' => true, 'message' => "Batch complete: {$success_count} recorded, {$fail_count} failed", 'success_count' => $success_count, 'fail_count' => $fail_count, 'failures' => $failures]);
         exit();
 
     case 'recurring_late':

@@ -1366,7 +1366,11 @@ document.getElementById('batchPaymentForm')?.addEventListener('submit', function
     })
     .then(r => r.json()).then(d => {
         if (d.success) {
-            showToast(d.message + ' (Success: ' + d.success_count + ', Failed: ' + d.fail_count + ')', 'success');
+            let msg = d.message + ' (Success: ' + d.success_count + ', Failed: ' + d.fail_count + ')';
+            if (d.failures && d.failures.length) {
+                msg += ' — ' + d.failures.map(f => f.member_id + ': ' + f.reason).join(' | ');
+            }
+            showToast(msg, d.fail_count > 0 ? 'warning' : 'success');
             bootstrap.Modal.getInstance(document.getElementById('batchModal'))?.hide();
             setTimeout(() => location.reload(), 1500);
         } else {
