@@ -616,6 +616,36 @@ a:hover {
     color: #81c784;
 }
 
+/* Selected-member confirmation in the Record Payment modal: make it unmistakably
+   green so the treasurer can clearly see a member is chosen. */
+#selectedMemberInfo {
+    border: 2px solid #28a745 !important;
+    background: rgba(40, 167, 69, 0.22) !important;
+    color: #d4f4dd !important;
+    font-weight: 600;
+}
+#selectedMemberInfo #selectedMemberNameDisplay,
+#selectedMemberInfo strong {
+    color: #ffffff !important;
+}
+#selectedMemberInfo #clearMemberBtn {
+    border-color: #28a745;
+    color: #28a745;
+}
+#selectedMemberInfo #clearMemberBtn:hover {
+    background: #28a745;
+    color: #fff;
+}
+
+/* Record Payment submit button turns solid green once the form is valid, so it
+   is obviously clickable (otherwise it stays disabled/greyed). */
+#submitPayment.ready {
+    background-color: #28a745 !important;
+    border-color: #28a745 !important;
+    color: #fff !important;
+    box-shadow: 0 6px 18px rgba(40, 167, 69, 0.4);
+}
+
 .alert-danger {
     background: rgba(244, 67, 54, 0.15);
     border-color: rgba(244, 67, 54, 0.3);
@@ -655,6 +685,11 @@ a:hover {
 .modal-header {
     border-bottom: 1px solid var(--glass-border);
     color: var(--text-primary);
+}
+
+.modal-body {
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
 }
 
 .modal-footer {
@@ -1354,7 +1389,7 @@ th {
     top: 0;
     left: 0;
     right: 0;
-    z-index: 1080;
+    z-index: 1040;
     display: none;
     padding: 0.6rem 1rem;
     background: #d32f2f;

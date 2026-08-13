@@ -938,6 +938,7 @@ function validateForm() {
     
     const ready = memberId && amount && method && month && year && txDate && txTime;
     submitEl.disabled = !ready;
+    submitEl.classList.toggle('ready', ready);
 }
 
 ['amount', 'payment_method', 'billing_month', 'billing_year', 'transaction_date', 'transaction_time'].forEach(function (id) {
@@ -1245,7 +1246,7 @@ function openPaymentModal(preserve) {
         }
         if (dotEl) dotEl.style.display = 'none';
         if (infoEl) infoEl.style.display = 'none';
-        if (submitEl) submitEl.disabled = true;
+    if (submitEl) { submitEl.disabled = true; submitEl.classList.remove('ready'); }
     }
     if (resultsEl) resultsEl.innerHTML = '';
     if (progressEl) progressEl.style.display = 'none';
