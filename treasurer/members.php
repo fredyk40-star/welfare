@@ -61,7 +61,12 @@ $annual_target = $settings['annual_amount'];
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">All Members</h5>
-                <button class="btn btn-sm btn-light" id="printMembersListBtn">🖨️ Print List</button>
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#importCsvModal">
+                        📥 Import CSV
+                    </button>
+                    <button class="btn btn-sm btn-light" id="printMembersListBtn">🖨️ Print List</button>
+                </div>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -130,6 +135,10 @@ $annual_target = $settings['annual_amount'];
                                                     data-action="pay">
                                                 Pay
                                             </button>
+                                            <a href="statement.php?member_id=<?php echo htmlspecialchars($member['member_id']); ?>" 
+                                               class="btn btn-sm btn-outline-success" target="_blank">
+                                                Statement
+                                            </a>
                                         </div>
                                     </td>
                                 </tr>
@@ -138,6 +147,40 @@ $annual_target = $settings['annual_amount'];
                     </table>
                 </div>
             </div>
+</div>
+</div>
+</div>
+
+<!-- Import CSV Modal -->
+<div class="modal fade" id="importCsvModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">📥 Import Members from CSV</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="importCsvForm" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <small>
+                            <strong>Required columns:</strong> full_name, email, phone<br>
+                            <strong>Optional:</strong> dob (YYYY-MM-DD), gender (Male/Female/Other), address, occupation,
+                            emergency_contact_name, emergency_contact_relationship, emergency_contact_phone<br>
+                            <strong>Defaults:</strong> dob=2000-01-01, gender=Other, address=N/A, emergency contact uses member's phone.
+                        </small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="csv_file" class="form-label">CSV File (max 2MB)</label>
+                        <input type="file" class="form-control" id="csv_file" name="csv_file" accept=".csv" required>
+                    </div>
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                    <div id="importResult" class="mt-3"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">📥 Import Members</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -237,6 +280,58 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     document.querySelectorAll('[data-action="pay"]').forEach(function(btn) {
         btn.addEventListener('click', function() { recordPayment(this.dataset.memberId, this.dataset.memberName); });
+    });
+
+    // Import CSV form handler
+    const importForm = document.getElementById('importCsvForm');
+    if (importForm) {
+        importForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const btn = this.querySelector('button[type="submit"]');
+            const resultDiv = document.getElementById('importResult');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Importing...';
+            resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm text-primary me-2"></div>Importing...';
+            
+            const formData = new FormData(this);
+            fetch('<?php echo APP_URL; ?>/api/members.php?action=import_csv', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(d => {
+                btn.disabled = false;
+                btn.textContent = '📥 Import Members';
+                if (d.success) {
+                    let html = '<div class="alert alert-success"><strong>Imported: ' + d.imported + '</strong>, Skipped: ' + d.skipped;
+                    if (d.errors && d.errors.length) {
+                        html += '<ul class="mb-0 mt-2 small">';
+                        d.errors.forEach(e => { html += '<li>' + e + '</li>'; });
+                        html += '</ul>';
+                    }
+                    if (d.generated && Object.keys(d.generated).length) {
+                        html += '<hr class="my-2"><strong>Generated passwords (share with members):</strong><ul class="mb-0 mt-2 small">';
+                        for (const [mid, pwd] of Object.entries(d.generated)) {
+                            html += '<li><code>' + mid + '</code>: <code>' + pwd + '</code></li>';
+                        }
+                        html += '</ul>';
+                    }
+                    html += '</div>';
+                    resultDiv.innerHTML = html;
+                    if (d.imported > 0) {
+                        setTimeout(() => location.reload(), 2000);
+                    }
+                } else {
+                    resultDiv.innerHTML = '<div class="alert alert-danger">Failed: ' + (d.message || 'Import failed') + '</div>';
+                }
+            })
+            .catch(() => {
+                btn.disabled = false;
+                btn.textContent = '📥 Import Members';
+                resultDiv.innerHTML = '<div class="alert alert-danger">Network error</div>';
+            });
+        });
     });
 });
 </script>

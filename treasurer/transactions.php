@@ -532,8 +532,15 @@ function sortIcon($field, $currentField, $currentDir) {
                     </div>
                     <div class="row mb-3">
                         <div class="col-md-12">
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="batchAllActive" name="all_active" value="1">
+                                <label class="form-check-label" for="batchAllActive">
+                                    <strong>Apply to all active members</strong> (overrides the Member IDs field below)
+                                </label>
+                            </div>
                             <label class="form-label">Member IDs (comma-separated) *</label>
                             <textarea class="form-control" id="batchMemberIds" rows="2" placeholder="GYF-001, GYF-002, GYF-003" required></textarea>
+                            <div class="form-text">Ignored when "Apply to all active members" is checked.</div>
                         </div>
                     </div>
                     <div class="mb-3">
@@ -1270,8 +1277,15 @@ function openBatchModal() {
     document.getElementById('batchYear').value = '';
     document.getElementById('batchMemberIds').value = '';
     document.getElementById('batchNotes').value = '';
+    document.getElementById('batchAllActive').checked = false;
+    document.getElementById('batchMemberIds').disabled = false;
     new bootstrap.Modal(document.getElementById('batchModal')).show();
 }
+
+// Toggle Member IDs field when "all active" checkbox changes
+document.getElementById('batchAllActive').addEventListener('change', function() {
+    document.getElementById('batchMemberIds').disabled = this.checked;
+});
 
 // Browse Members modal
 function openBrowseMembers() {

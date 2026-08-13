@@ -119,12 +119,54 @@ function sanitizeInput($data) {
     return cleanInput($data);
 }
 
-function generateMemberID() {
-    return 'GYF-' . strtoupper(substr(bin2hex(random_bytes(4)), 0, 6));
-}
-
 function generateReceiptNumber() {
     return 'RCP-' . date('Ymd') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 4));
+}
+
+// Generate a unique member ID of the form GYF-XXXXXX (alphanumeric, no ambiguous chars).
+function generateMemberId($db) {
+    $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    for ($attempt = 0; $attempt < 20; $attempt++) {
+        $suffix = '';
+        for ($i = 0; $i < 6; $i++) {
+            $suffix .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+        $candidate = 'GYF-' . $suffix;
+        $stmt = $db->prepare("SELECT 1 FROM members WHERE member_id = :mid");
+        $stmt->execute([':mid' => $candidate]);
+        if (!$stmt->fetch()) {
+            return $candidate;
+        }
+    }
+    // Extremely unlikely fallback
+    return 'GYF-' . strtoupper(substr(bin2hex(random_bytes(5)), 0, 8));
+}
+
+// Send a friendly payment reminder to a member who has not paid a billing cycle.
+function sendReminderEmail($email, $full_name, $month_name, $year, $amount_due) {
+    $email = sanitizeEmailValue($email);
+    $full_name = sanitizeEmailValue($full_name);
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+    $subject = 'Payment Reminder - ' . APP_NAME;
+    $safe_name = htmlspecialchars($full_name, ENT_QUOTES, 'UTF-8');
+    $safe_month = htmlspecialchars($month_name, ENT_QUOTES, 'UTF-8');
+    $safe_amount = htmlspecialchars(number_format((float) $amount_due, 2), ENT_QUOTES, 'UTF-8');
+    $sign_off = $safe_name ? htmlspecialchars($safe_name, ENT_QUOTES, 'UTF-8') : APP_NAME;
+    $message = <<<HTML
+<html><body style="font-family:Arial,sans-serif;color:#333;">
+<div style="max-width:600px;margin:0 auto;padding:20px;">
+  <h2 style="color:#1976d2;">{$safe_month} {$year} Contribution Reminder</h2>
+  <p>Dear {$safe_name},</p>
+  <p>This is a gentle reminder that your welfare contribution for <strong>{$safe_month} {$year}</strong>
+     (GH₵ {$safe_amount}) has not yet been recorded. Please make your payment at your earliest convenience.</p>
+  <p>Thank you for your continued support of the GYF Welfare community.</p>
+  <p style="color:#666;font-size:0.9em;">— {$sign_off} Treasurer</p>
+</div>
+</body></html>
+HTML;
+    return sendEmail($email, $subject, $message);
 }
 
 function validatePassword($password) {
@@ -363,7 +405,7 @@ function sendReceiptEmail($member_email, $receipt_data, $member_photo = null, $t
     }
 
     $subject = 'Payment Receipt - ' . APP_NAME;
-    $message = ';
+    $message = '
     <html>
     <head>
         <title>Payment Receipt</title>

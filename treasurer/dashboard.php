@@ -58,12 +58,35 @@ try {
     $pending_stmt->execute([':month' => $current_month, ':year' => $current_year, ':treasurer_id' => TREASURER_MEMBER_ID]);
     $pending_members = $pending_stmt->fetch()['total'];
 
+    // Monthly collection for the chart (12 months of current year)
+    $monthly_collection = [];
+    for ($m = 1; $m <= 12; $m++) {
+        $stmt = $db->prepare("SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
+                              WHERE billing_cycle_month = :m AND billing_cycle_year = :y AND status != 'void'");
+        $stmt->execute([':m' => $m, ':y' => $current_year]);
+        $monthly_collection[$m] = (float) $stmt->fetch()['total'];
+    }
+
+    // Defaulters for current cycle
+    $defaulters_stmt = $db->prepare("
+        SELECT m.member_id, m.full_name, m.email, m.phone
+        FROM members m
+        WHERE m.member_id != :treasurer_id
+          AND m.member_id NOT IN (
+              SELECT DISTINCT member_id FROM transactions
+              WHERE billing_cycle_month = :m AND billing_cycle_year = :y AND status != 'void'
+          )
+        ORDER BY m.full_name ASC
+    ");
+    $defaulters_stmt->execute([':treasurer_id' => TREASURER_MEMBER_ID, ':m' => $current_month, ':y' => $current_year]);
+    $defaulters = $defaulters_stmt->fetchAll();
+
     // Get recent transactions
     $recent_query = "SELECT t.id, t.receipt_no, t.member_id, t.amount, t.payment_method, t.billing_cycle_month, t.billing_cycle_year, t.transaction_date, t.status, m.full_name, m.passport_photo 
-                    FROM transactions t 
-                    JOIN members m ON t.member_id = m.member_id 
-                    WHERE t.status != 'void'
-                    ORDER BY t.transaction_date DESC LIMIT 10";
+                     FROM transactions t 
+                     JOIN members m ON t.member_id = m.member_id 
+                     WHERE t.status != 'void'
+                     ORDER BY t.transaction_date DESC LIMIT 10";
     $recent_transactions = $db->query($recent_query)->fetchAll();
 } catch (Exception $e) {
     $dashboard_error = 'Unable to load dashboard data. Please contact support.';
@@ -72,6 +95,8 @@ try {
     $yearly_total = 0;
     $total_members = 0;
     $pending_members = 0;
+    $monthly_collection = [];
+    $defaulters = [];
     $recent_transactions = [];
 }
 ?>
@@ -165,32 +190,94 @@ try {
                 </div>
             </div>
         </div>
-    </div>
+        </div>
 </div>
 
-<!-- Quick Actions (moved below Recent Transactions so nothing blocks the navbar / search) -->
+<!-- Defaulters & Arrears Panel + Monthly Collection Chart -->
 <div class="row mb-4">
-    <div class="col-12">
+    <div class="col-lg-7 mb-4">
         <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Quick Actions</h5>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Members Pending Payment (<?php echo date('F Y'); ?>)</h5>
+                <span class="badge bg-<?php echo $pending_members > 0 ? 'danger' : 'success'; ?>">
+                    <?php echo count($defaulters); ?> pending
+                </span>
             </div>
             <div class="card-body">
-                <div class="row">
-                    <div class="col-md-4 mb-2">
-                        <button class="btn btn-primary w-100" type="button" id="openPaymentModalBtn">
-                            ➕ Record Payment
-                        </button>
-                    </div>
-                    <div class="col-md-4 mb-2">
-                        <a href="members.php" class="btn btn-warning w-100">
-                            👥 View Members
-                        </a>
-                    </div>
-                    <div class="col-md-4 mb-2">
-                        <a href="settings.php" class="btn btn-info w-100 text-white">
-                            ⚙️ Settings
-                        </a>
+                <div id="defaultersLoading" class="text-center py-3 d-none">
+                    <div class="spinner-border text-primary"></div>
+                </div>
+                <div id="defaultersEmpty" class="alert alert-success d-none">
+                    All members have paid for this cycle! 🎉
+                </div>
+                <div class="table-responsive" id="defaultersTableWrap">
+                    <table class="table table-hover" id="defaultersTable">
+                        <thead>
+                            <tr>
+                                <th>Member</th>
+                                <th>Contact</th>
+                                <th class="text-end">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="defaultersBody">
+                            <?php if (empty($defaulters)): ?>
+                                <tr id="emptyRow"><td colspan="3" class="text-center text-muted py-4">All members have paid!</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($defaulters as $d): ?>
+                                    <tr data-member-id="<?php echo htmlspecialchars($d['member_id']); ?>">
+                                        <td>
+                                            <strong><?php echo htmlspecialchars($d['full_name']); ?></strong>
+                                            <br><small><?php echo htmlspecialchars($d['member_id']); ?></small>
+                                        </td>
+                                        <td>
+                                            <?php echo htmlspecialchars($d['phone']); ?>
+                                            <br><small><?php echo htmlspecialchars($d['email']); ?></small>
+                                        </td>
+                                        <td class="text-end">
+                                            <button class="btn btn-sm btn-outline-primary sendReminderBtn" 
+                                                    data-member-id="<?php echo htmlspecialchars($d['member_id']); ?>"
+                                                    data-member-name="<?php echo htmlspecialchars($d['full_name']); ?>"
+                                                    data-member-email="<?php echo htmlspecialchars($d['email']); ?>">
+                                                📧 Remind
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-2">
+                    <button class="btn btn-outline-danger w-100" id="sendAllRemindersBtn" <?php echo empty($defaulters) ? 'disabled' : ''; ?>>
+                        📧 Send Reminders to All (<?php echo count($defaulters); ?>)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Monthly Collection Trend (<?php echo date('Y'); ?>)</h5>
+            </div>
+            <div class="card-body">
+                <div class="chart-container" style="height: 250px;">
+                    <div class="d-flex align-items-end justify-content-between chart-bars" style="height: 200px;">
+                        <?php
+                        $max_val = max($monthly_collection);
+                        if ($max_val === 0) $max_val = 1;
+                        $months_short = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                        for ($m = 1; $m <= 12; $m++):
+                            $val = $monthly_collection[$m] ?? 0;
+                            $pct = ($val / $max_val) * 100;
+                            $color = $m == (int)date('m') ? 'bg-primary' : 'bg-secondary';
+                        ?>
+                            <div class="chart-bar-wrapper" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;">
+                                <div class="chart-bar <?php echo $color; ?>" style="width:100%; height:<?php echo max(4, $pct); ?>%; min-height:4px; border-radius:4px 4px 0 0; transition:height .3s;"></div>
+                                <small class="text-muted"><?php echo $months_short[$m-1]; ?></small>
+                                <small class="fw-bold text-dark">GH₵ <?php echo number_format($monthly_collection[$m], 0); ?></small>
+                            </div>
+                        <?php endfor; ?>
                     </div>
                 </div>
             </div>
@@ -269,8 +356,6 @@ try {
         </div>
     </div>
 </div>
-
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
 
 <script nonce="<?php echo CSP_NONCE; ?>">
 // Global function to open the payment modal safely and prevent stuck backdrops
@@ -355,6 +440,87 @@ document.addEventListener('DOMContentLoaded', function() {
     
     var searchBtn = document.getElementById('searchMembersBtn');
     if (searchBtn) { searchBtn.addEventListener('click', searchMembers); }
+
+    // Defaulters: send individual reminder
+    document.querySelectorAll('.sendReminderBtn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const memberId = this.dataset.memberId;
+            const memberName = this.dataset.memberName;
+            const memberEmail = this.dataset.memberEmail;
+            const originalText = this.textContent;
+            this.disabled = true;
+            this.textContent = 'Sending...';
+            
+            const formData = new FormData();
+            formData.append('csrf_token', document.querySelector('[name="csrf_token"]').value);
+            formData.append('member_id', memberId);
+            formData.append('month', '<?php echo date("m"); ?>');
+            formData.append('year', '<?php echo date("Y"); ?>');
+            
+            fetch('<?php echo APP_URL; ?>/api/members.php?action=send_reminder', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(d => {
+                this.disabled = false;
+                this.textContent = originalText;
+                if (d.success) {
+                    this.textContent = '✓ Sent';
+                    this.classList.remove('btn-outline-primary');
+                    this.classList.add('btn-success');
+                    setTimeout(() => {
+                        this.textContent = originalText;
+                        this.classList.remove('btn-success');
+                        this.classList.add('btn-outline-primary');
+                    }, 3000);
+                } else {
+                    alert('Failed: ' + (d.message || 'Could not send reminder'));
+                }
+            })
+            .catch(() => {
+                this.disabled = false;
+                this.textContent = originalText;
+                alert('Network error sending reminder');
+            });
+        });
+    });
+
+    // Send all reminders
+    const sendAllBtn = document.getElementById('sendAllRemindersBtn');
+    if (sendAllBtn) {
+        sendAllBtn.addEventListener('click', function() {
+            const originalText = this.textContent;
+            this.disabled = true;
+            this.textContent = 'Sending...';
+            
+            const formData = new FormData();
+            formData.append('csrf_token', document.querySelector('[name="csrf_token"]').value);
+            formData.append('month', '<?php echo date("m"); ?>');
+            formData.append('year', '<?php echo date("Y"); ?>');
+            
+            fetch('<?php echo APP_URL; ?>/api/members.php?action=send_reminder_all', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(d => {
+                this.disabled = false;
+                this.textContent = originalText;
+                if (d.success) {
+                    alert('Reminders sent: ' + d.sent + ', failed: ' + d.failed);
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    alert('Failed: ' + (d.message || 'Could not send reminders'));
+                }
+            })
+            .catch(() => {
+                this.disabled = false;
+                this.textContent = originalText;
+                alert('Network error');
+            });
+        });
+    }
 });
 </script>
 

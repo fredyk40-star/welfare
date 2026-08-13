@@ -357,15 +357,23 @@ switch ($action) {
             echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
             exit();
         }
-        $member_ids_raw = $_POST['member_ids'] ?? [];
-        if (is_string($member_ids_raw)) {
-            $member_ids = json_decode($member_ids_raw, true);
-            if (!is_array($member_ids)) {
-                echo json_encode(['success' => false, 'message' => 'Invalid member IDs']);
-                exit();
-            }
+        // "Record for all active members" mode: ignore the typed IDs and use every
+        // active member (treasurer excluded). Reuses all existing per-member guards.
+        if (!empty($_POST['all_active'])) {
+            $allStmt = $db->prepare("SELECT member_id FROM members WHERE member_id != :treasurer_id");
+            $allStmt->execute([':treasurer_id' => TREASURER_MEMBER_ID]);
+            $member_ids = array_column($allStmt->fetchAll(), 'member_id');
         } else {
-            $member_ids = $member_ids_raw;
+            $member_ids_raw = $_POST['member_ids'] ?? [];
+            if (is_string($member_ids_raw)) {
+                $member_ids = json_decode($member_ids_raw, true);
+                if (!is_array($member_ids)) {
+                    echo json_encode(['success' => false, 'message' => 'Invalid member IDs']);
+                    exit();
+                }
+            } else {
+                $member_ids = $member_ids_raw;
+            }
         }
         $amount = isset($_POST['amount']) ? (float)$_POST['amount'] : 0;
         $payment_method = cleanInput($_POST['payment_method'] ?? '');
@@ -392,8 +400,9 @@ switch ($action) {
             echo json_encode(['success' => false, 'message' => 'All fields required']);
             exit();
         }
-        if (count($member_ids) > 100) {
-            echo json_encode(['success' => false, 'message' => 'Maximum 100 members per batch']);
+        $maxBatch = !empty($_POST['all_active']) ? 500 : 100;
+        if (count($member_ids) > $maxBatch) {
+            echo json_encode(['success' => false, 'message' => "Maximum {$maxBatch} members per batch"]);
             exit();
         }
         
