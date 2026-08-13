@@ -331,14 +331,14 @@ function sortIcon($field, $currentField, $currentDir) {
             <button class="btn btn-outline-danger btn-lg" type="button" id="undoLastTransactionBtn">
                 ↩️ Undo Last
             </button>
-            <form method="POST" action="<?php echo APP_URL; ?>/api/transactions.php?action=export_csv" style="display: inline;">
+            <form id="exportCsvForm" method="POST" action="<?php echo APP_URL; ?>/api/transactions.php?action=export_csv" style="display: inline;">
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                 <?php foreach (array_filter($_GET, function($k){return $k!=="action"&&$k!=="export";}, ARRAY_FILTER_USE_KEY) as $k => $v): ?>
                 <input type="hidden" name="<?php echo htmlspecialchars($k); ?>" value="<?php echo htmlspecialchars($v); ?>">
                 <?php endforeach; ?>
                 <button type="submit" class="btn btn-success btn-lg">📊 Export CSV</button>
             </form>
-            <form method="POST" action="<?php echo APP_URL; ?>/api/transactions.php?action=export_pdf" style="display: inline;">
+            <form id="exportPdfForm" method="POST" action="<?php echo APP_URL; ?>/api/transactions.php?action=export_pdf" style="display: inline;">
                 <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
                 <?php foreach (array_filter($_GET, function($k){return $k!=="action"&&$k!=="export";}, ARRAY_FILTER_USE_KEY) as $k => $v): ?>
                 <input type="hidden" name="<?php echo htmlspecialchars($k); ?>" value="<?php echo htmlspecialchars($v); ?>">
@@ -759,6 +759,20 @@ if (!empty($late_payers)):
 </div>
 
 <script nonce="<?php echo CSP_NONCE; ?>">
+// API base derived from the origin that actually served this page, combined with
+// the sub-directory path configured in APP_URL. This keeps AJAX calls same-origin
+// in every context (local XAMPP in /welfare, Vercel root, preview deploys, Capacitor
+// webview) and avoids ERR_NAME_NOT_RESOLVED when APP_URL points at a different host.
+const APP_BASE = (function () {
+    var path = '';
+    try {
+        var a = document.createElement('a');
+        a.href = '<?php echo APP_URL; ?>';
+        path = (a.pathname || '/').replace(/\/+$/, '');
+    } catch (e) {}
+    return window.location.origin + path;
+})();
+
 function searchMembers() {
     const searchTerm = document.getElementById('memberSearch').value;
     if (searchTerm.length < 2) {
@@ -773,7 +787,7 @@ function searchMembers() {
         );
     };
 
-    fetch(`<?php echo APP_URL; ?>/api/members.php?action=search&term=${encodeURIComponent(searchTerm)}`)
+    fetch(`${APP_BASE}/api/members.php?action=search&term=${encodeURIComponent(searchTerm)}`)
         .then(response => response.json())
         .then(data => {
             let html = '';
@@ -784,7 +798,7 @@ function searchMembers() {
                     const safeEmail = escapeHtml(member.email || '');
                     const safePhone = escapeHtml(member.phone);
                     const safePhoto = member.passport_photo ? escapeHtml(String(member.passport_photo)) : '';
-                    const photoUrl = (p) => { if (!p) return ''; p = String(p); return p.indexOf('http') === 0 ? p : '<?php echo APP_URL; ?>/uploads/photos/' + p; };
+                    const photoUrl = (p) => { if (!p) return ''; p = String(p); return p.indexOf('http') === 0 ? p : APP_BASE + '/uploads/photos/' + p; };
                     html += `
                         <div class="card mb-2 member-card" style="cursor: pointer;"
                              data-member-id="${safeId}" data-member-name="${safeName}" data-member-email="${safeEmail}" data-member-phone="${safePhone}" data-member-photo="${safePhoto}">
@@ -952,12 +966,12 @@ var clearBtn = document.getElementById('clearMemberBtn');
 });
 
 function viewReceipt(transactionId) {
-    window.open(`<?php echo APP_URL; ?>/api/transactions.php?action=receipt&id=${transactionId}`,
+    window.open(`${APP_BASE}/api/transactions.php?action=receipt&id=${transactionId}`,
                 'Receipt', 'width=600,height=400');
 }
 
 function printReceipt(transactionId) {
-    window.open(`<?php echo APP_URL; ?>/api/transactions.php?action=receipt&id=${transactionId}&print=1`,
+    window.open(`${APP_BASE}/api/transactions.php?action=receipt&id=${transactionId}&print=1`,
         'Receipt', 'width=600,height=400');
 }
 
@@ -1018,7 +1032,7 @@ function refreshMemberContext(memberId) {
     }
     const month = document.getElementById('billing_month').value;
     const year = document.getElementById('billing_year').value;
-    const base = '<?php echo APP_URL; ?>/api/members.php';
+    const base = APP_BASE + '/api/members.php';
     fetch(base + '?action=details&member_id=' + encodeURIComponent(memberId))
         .then(r => r.json())
         .then(d => {
@@ -1043,7 +1057,7 @@ function checkDuplicate(memberId, month, year) {
     const box = document.getElementById('dupWarning');
     if (!box) return;
     if (!memberId || !month || !year) { box.style.display = 'none'; return; }
-    fetch('<?php echo APP_URL; ?>/api/transactions.php?action=check_duplicate&member_id=' +
+    fetch(APP_BASE + '/api/transactions.php?action=check_duplicate&member_id=' +
         encodeURIComponent(memberId) + '&month=' + encodeURIComponent(month) + '&year=' + encodeURIComponent(year))
         .then(r => r.json())
         .then(d => {
@@ -1091,7 +1105,7 @@ function showTxDetail(transactionId) {
     body.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
     const bsModal = new bootstrap.Modal(modalEl);
     bsModal.show();
-    fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=details&id=${transactionId}`)
+    fetch(`${APP_BASE}/api/transactions.php?action=details&id=${transactionId}`)
         .then(r => r.json()).then(d => {
             if (!d.success) { body.innerHTML = '<div class="alert alert-danger">Failed to load details.</div>'; return; }
             const t = d.transaction;
@@ -1120,7 +1134,7 @@ function loadMemberHistory(memberId) {
     if (!container) return;
     container.style.display = 'block';
     container.innerHTML = '<div class="text-center py-3"><div class="spinner-border text-primary"></div></div>';
-    fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=member_history&member_id=${memberId}`)
+    fetch(`${APP_BASE}/api/transactions.php?action=member_history&member_id=${memberId}`)
         .then(r => r.json()).then(d => {
             if (!d.success || !d.history.length) { container.innerHTML = '<div class="alert alert-info">No payment history found.</div>'; return; }
             const esc = (s) => { if (!s && s !== '') return ''; return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c] || c)); };
@@ -1143,7 +1157,7 @@ document.getElementById('bulkExportCsv')?.addEventListener('click', function() {
     if (!ids.length) { showToast('Please select at least one transaction.', 'warning'); return; }
     const form = document.createElement('form');
     form.method = 'POST';
-    form.action = '<?php echo APP_URL; ?>/api/transactions.php?action=export_csv';
+    form.action = APP_BASE + '/api/transactions.php?action=export_csv';
     const csrf = document.createElement('input');
     csrf.type = 'hidden';
     csrf.name = 'csrf_token';
@@ -1169,7 +1183,7 @@ function confirmVoid() {
     const transactionId = document.getElementById('voidTransactionId').value;
     const reason = document.getElementById('voidReason').value.trim();
     if (!reason) { showToast('Please enter a reason for voiding.', 'warning'); return; }
-    fetch('<?php echo APP_URL; ?>/api/transactions.php?action=void', {
+    fetch(APP_BASE + '/api/transactions.php?action=void', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'transaction_id=' + encodeURIComponent(transactionId) + '&reason=' + encodeURIComponent(reason) + '&csrf_token=<?php echo $csrf_token; ?>'
@@ -1182,7 +1196,7 @@ function confirmVoid() {
 
 // Undo last transaction
 function undoLastTransaction() {
-    fetch('<?php echo APP_URL; ?>/api/transactions.php?action=get_last')
+    fetch(APP_BASE + '/api/transactions.php?action=get_last')
         .then(r => r.json()).then(d => {
             if (!d.success || !d.transaction) { showToast('No recent transaction found.', 'warning'); return; }
             document.getElementById('undoTransactionId').value = d.transaction.id;
@@ -1195,7 +1209,7 @@ function confirmUndo() {
     const transactionId = document.getElementById('undoTransactionId').value;
     const reason = document.getElementById('undoReason').value.trim();
     if (!reason) { showToast('Please enter a reason for undo.', 'warning'); return; }
-    fetch('<?php echo APP_URL; ?>/api/transactions.php?action=void', {
+    fetch(APP_BASE + '/api/transactions.php?action=void', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'transaction_id=' + encodeURIComponent(transactionId) + '&reason=' + encodeURIComponent('UNDO: ' + reason) + '&csrf_token=<?php echo $csrf_token; ?>'
@@ -1273,7 +1287,7 @@ function loadBrowseMembers(term) {
     if (loading) loading.style.display = 'block';
     if (empty) empty.style.display = 'none';
     grid.innerHTML = '';
-    const url = '<?php echo APP_URL; ?>/api/members.php?action=list' +
+    const url = APP_BASE + '/api/members.php?action=list' +
         (term ? '&term=' + encodeURIComponent(term) : '');
     fetch(url)
         .then(r => r.json())
@@ -1283,7 +1297,7 @@ function loadBrowseMembers(term) {
                 empty.style.display = 'block';
                 return;
             }
-            const base = '<?php echo APP_URL; ?>/uploads/photos/';
+            const base = APP_BASE + '/uploads/photos/';
             const photoUrl = (p) => { if (!p) return ''; p = String(p); return p.indexOf('http') === 0 ? p : base + p; };
             const esc = (s) => { if (!s && s !== '') return ''; return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c] || c)); };
             d.members.forEach(m => {
@@ -1345,7 +1359,7 @@ document.getElementById('batchPaymentForm')?.addEventListener('submit', function
     formData.append('notes', document.getElementById('batchNotes').value);
     formData.append('transaction_date', document.getElementById('batchDate').value);
     formData.append('transaction_time', document.getElementById('batchTime').value);
-    fetch('<?php echo APP_URL; ?>/api/transactions.php', {
+    fetch(APP_BASE + '/api/transactions.php', {
         method: 'POST',
         body: formData
     })
@@ -1458,6 +1472,13 @@ document.getElementById('batchPaymentForm')?.addEventListener('submit', function
 
 <script nonce="<?php echo CSP_NONCE; ?>">
 document.addEventListener('DOMContentLoaded', function() {
+    // Keep export-form submissions same-origin (mirrors APP_BASE logic) so they
+    // don't fail DNS when APP_URL points at a different host than the page origin.
+    var csvForm = document.getElementById('exportCsvForm');
+    if (csvForm) { csvForm.action = APP_BASE + '/api/transactions.php?action=export_csv'; }
+    var pdfForm = document.getElementById('exportPdfForm');
+    if (pdfForm) { pdfForm.action = APP_BASE + '/api/transactions.php?action=export_pdf'; }
+
     var printBtn = document.getElementById('printReceiptBtn');
     if (printBtn) { printBtn.addEventListener('click', window.print); }
     
