@@ -641,6 +641,82 @@ function updateWelfareSettings($db, $annual_amount, $monthly_amount) {
     return $stmt->execute([':annual' => $annual, ':monthly' => $monthly]);
 }
 
+/**
+ * Get the welfare target for a specific calendar year.
+ * Falls back to the global settings row if the year has no explicit target.
+ *
+ * @return array{annual_amount: float, monthly_amount: float}
+ */
+function getYearlyTarget($db, $year) {
+    $year = (int) $year;
+    $stmt = $db->prepare("SELECT annual_amount, monthly_amount FROM yearly_targets WHERE year = :yr");
+    $stmt->execute([':yr' => $year]);
+    $row = $stmt->fetch();
+    if ($row) {
+        return [
+            'annual_amount' => (float) ($row['annual_amount'] ?? 240.00),
+            'monthly_amount' => (float) ($row['monthly_amount'] ?? 20.00)
+        ];
+    }
+    // Fallback to global settings (legacy/default)
+    $settings = getWelfareSettings($db);
+    return [
+        'annual_amount' => $settings['annual_amount'],
+        'monthly_amount' => $settings['monthly_amount']
+    ];
+}
+
+/**
+ * Get a member's payment stats for a specific year.
+ *
+ * @return array{
+ *   paid: float,
+ *   target: float,
+ *   monthly_target: float,
+ *   debt: float,
+ *   pct: float,
+ *   tx_count: int
+ * }
+ */
+function getMemberYearStats($db, $member_id, $year) {
+    $year = (int) $year;
+    $target = getYearlyTarget($db, $year);
+
+    $ytd = $db->prepare("SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as tx_count FROM transactions WHERE member_id = :mid AND billing_cycle_year = :yr AND status != 'void'");
+    $ytd->execute([':mid' => $member_id, ':yr' => $year]);
+    $row = $ytd->fetch();
+
+    $paid = (float) ($row['tx_count'] ? $row['total'] : 0);
+    $debt = max(0.0, $target['annual_amount'] - $paid);
+    $pct = $target['annual_amount'] > 0 ? min(100.0, round(($paid / $target['annual_amount']) * 100, 1)) : 0.0;
+
+    return [
+        'paid' => $paid,
+        'target' => $target['annual_amount'],
+        'monthly_target' => $target['monthly_amount'],
+        'debt' => $debt,
+        'pct' => $pct,
+        'tx_count' => (int) ($row['tx_count'] ?? 0)
+    ];
+}
+
+/**
+ * Get all years in which a member has any transaction, plus their stats.
+ *
+ * @return array<int, array{year:int, paid:float, target:float, debt:float, pct:float, tx_count:int}>
+ */
+function getMemberYearlyHistory($db, $member_id) {
+    $stmt = $db->prepare("SELECT DISTINCT billing_cycle_year FROM transactions WHERE member_id = :mid AND status != 'void' ORDER BY billing_cycle_year DESC");
+    $stmt->execute([':mid' => $member_id]);
+    $years = array_column($stmt->fetchAll(), 'billing_cycle_year');
+
+    $history = [];
+    foreach ($years as $yr) {
+        $history[] = getMemberYearStats($db, $member_id, $yr);
+    }
+    return $history;
+}
+
 function getRecurringLatePayers($db) {
     $stmt = $db->query("SELECT t.member_id, m.full_name, COUNT(*) as late_count, MAX(t.transaction_date) as last_payment FROM transactions t JOIN members m ON t.member_id = m.member_id WHERE DAY(t.transaction_date) > 15 AND t.billing_cycle_month = MONTH(CURRENT_DATE - INTERVAL 1 MONTH) AND t.billing_cycle_year = YEAR(CURRENT_DATE - INTERVAL 1 MONTH) GROUP BY t.member_id, m.full_name HAVING late_count >= 2 ORDER BY late_count DESC");
     return $stmt->fetchAll();

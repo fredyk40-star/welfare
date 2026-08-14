@@ -103,14 +103,17 @@ switch ($action) {
                 }
             }
 
-            // Annual target from settings
-            $settings = getWelfareSettings($db);
+            // Annual target from current calendar year
+            $settings = getYearlyTarget($db, date('Y'));
             $safe_member['annual_target'] = $settings['annual_amount'];
+            $safe_member['monthly_target'] = $settings['monthly_amount'];
 
             // Year-to-date paid (excluding void transactions)
             $ytd = $db->prepare("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE member_id = :mid AND billing_cycle_year = :yr AND status != 'void'");
             $ytd->execute([':mid' => $member_id, ':yr' => $year]);
             $safe_member['ytd_paid'] = (float) $ytd->fetch()['total'];
+            $safe_member['year_debt'] = max(0.0, $safe_member['annual_target'] - $safe_member['ytd_paid']);
+            $safe_member['year_pct'] = $safe_member['annual_target'] > 0 ? min(100.0, round(($safe_member['ytd_paid'] / $safe_member['annual_target']) * 100, 1)) : 0.0;
 
             logAudit($_SESSION['user_id'], "API: Viewed member details for {$member_id}");
             
@@ -227,7 +230,7 @@ switch ($action) {
         $month = (int) ($_POST['month'] ?? date('m'));
         $year = (int) ($_POST['year'] ?? date('Y'));
         $month_name = date('F', mktime(0, 0, 0, $month, 1));
-        $settings = getWelfareSettings($db);
+        $settings = getYearlyTarget($db, $year);
         $amount_due = (float) ($settings['monthly_amount'] ?? $settings['annual_amount'] / 12 ?? 0);
 
         if ($action === 'send_reminder_all') {

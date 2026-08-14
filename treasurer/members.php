@@ -44,8 +44,9 @@ $members_stmt->execute([
 ]);
 $members = $members_stmt->fetchAll();
 
-// Get settings for annual target
-$settings = getWelfareSettings($db);
+// Get settings for current calendar year
+$current_year = date('Y');
+$settings = getYearlyTarget($db, $current_year);
 $annual_target = $settings['annual_amount'];
 ?>
 
@@ -81,6 +82,7 @@ $annual_target = $settings['annual_amount'];
                                 <th>Status</th>
                                 <th>Monthly Status</th>
                                 <th>Yearly Progress</th>
+                                <th>Year Debt</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -127,6 +129,17 @@ $annual_target = $settings['annual_amount'];
                                             </div>
                                         </div>
                                         <small>GH₵ <?php echo number_format($member['yearly_total'], 2); ?> / GH₵ <?php echo number_format($annual_target, 2); ?></small>
+                                    </td>
+                                    <td>
+                                        <?php
+                                        $debt = max(0.0, $annual_target - $member['yearly_total']);
+                                        if ($debt > 0.01):
+                                        ?>
+                                            <span class="text-danger fw-bold">GH₵ <?php echo number_format($debt, 2); ?></span>
+                                            <br><small class="text-muted">outstanding</small>
+                                        <?php else: ?>
+                                            <span class="text-success fw-bold">✓ Cleared</span>
+                                        <?php endif; ?>
                                     </td>
                                     <td>
                                          <div class="btn-group">

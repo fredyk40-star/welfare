@@ -44,8 +44,8 @@ $monthly_stmt = $db->prepare($monthly_query);
 $monthly_stmt->execute([':member_id' => $member_id, ':month' => $current_month, ':year' => $current_year]);
 $monthly_total = $monthly_stmt->fetch()['total'];
 
-// Get settings
-$settings = getWelfareSettings($db);
+// Get year-specific settings
+$settings = getYearlyTarget($db, $current_year);
 $annual_target = $settings['annual_amount'];
 $monthly_target = $settings['monthly_amount'];
 
@@ -55,7 +55,8 @@ if ($monthly_target <= 0) $monthly_target = 1;
 
 // Calculate progress
 $yearly_percentage = ($yearly_total / $annual_target) * 100;
-$remaining = $annual_target - $yearly_total;
+$remaining = max(0.0, $annual_target - $yearly_total);
+$year_debt = $remaining;
 
 // Get recent transactions
 $recent_query = "SELECT * FROM transactions 
@@ -111,9 +112,13 @@ $paid_months = $months_stmt->fetchAll(PDO::FETCH_COLUMN);
     </div>
     <div class="col-sm-6 col-md-3 mb-3">
         <div class="stat-card">
-            <h6>Yearly Contribution</h6>
             <h4>GH₵ <?php echo number_format($yearly_total, 2); ?></h4>
             <small>Target: GH₵ <?php echo number_format($annual_target, 2); ?></small>
+            <?php if ($year_debt > 0.01): ?>
+                <br><small class="text-danger fw-bold">Year debt: GH₵ <?php echo number_format($year_debt, 2); ?></small>
+            <?php else: ?>
+                <br><small class="text-success fw-bold">✓ Target cleared</small>
+            <?php endif; ?>
         </div>
     </div>
     <div class="col-sm-6 col-md-3 mb-3">
@@ -128,7 +133,7 @@ $paid_months = $months_stmt->fetchAll(PDO::FETCH_COLUMN);
     <div class="col-sm-6 col-md-3 mb-3">
         <div class="stat-card">
             <h6>Remaining</h6>
-            <h4>GH₵ <?php echo number_format(max($remaining, 0), 2); ?></h4>
+            <h4>GH₵ <?php echo number_format($remaining, 2); ?></h4>
             <small>For <?php echo $current_year; ?></small>
         </div>
     </div>

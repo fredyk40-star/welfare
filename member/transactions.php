@@ -70,7 +70,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'pdf') {
     $yearly_stmt->execute([':member_id' => $member_id, ':year' => $current_year]);
     $yearly_total = $yearly_stmt->fetch()['total'];
     
-    $settings = getWelfareSettings($db);
+    $settings = getYearlyTarget($db, $current_year);
     $annual_target = $settings['annual_amount'];
     if ($annual_target <= 0) $annual_target = 1;
     
@@ -217,7 +217,7 @@ $yearly_stmt = $db->prepare($yearly_query);
 $yearly_stmt->execute([':member_id' => $member_id, ':year' => $current_year]);
 $yearly_total = $yearly_stmt->fetch()['total'];
 
-$settings = getWelfareSettings($db);
+$settings = getYearlyTarget($db, $current_year);
 $annual_target = $settings['annual_amount'];
 $monthly_target = $settings['monthly_amount'];
 

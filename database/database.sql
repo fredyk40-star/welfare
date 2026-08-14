@@ -39,6 +39,21 @@ CREATE TABLE IF NOT EXISTS settings (
     UNIQUE KEY singleton (id)
 );
 
+-- Per-year welfare targets (calendar-year specific)
+CREATE TABLE IF NOT EXISTS yearly_targets (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    year INT NOT NULL,
+    annual_amount DECIMAL(10,2) NOT NULL DEFAULT 240.00,
+    monthly_amount DECIMAL(10,2) NOT NULL DEFAULT 20.00,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_year (year)
+);
+
+-- Seed current year target from settings if missing
+INSERT INTO yearly_targets (year, annual_amount, monthly_amount)
+SELECT YEAR(CURDATE()), annual_amount, monthly_amount FROM settings WHERE id = 1
+ON DUPLICATE KEY UPDATE annual_amount = VALUES(annual_amount), monthly_amount = VALUES(monthly_amount);
+
 -- Transactions table (matches live schema, including `status` and `notes`)
 CREATE TABLE IF NOT EXISTS transactions (
     id INT PRIMARY KEY AUTO_INCREMENT,

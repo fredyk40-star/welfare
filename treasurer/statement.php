@@ -34,8 +34,8 @@ try {
         throw new Exception('Member not found');
     }
 
-    // Get settings
-    $settings = getWelfareSettings($db);
+    // Get settings for the transaction year (fallback to current year)
+    $settings = getYearlyTarget($db, date('Y'));
     $annual_target = $settings['annual_amount'];
 
     // Get all transactions for this member
@@ -155,8 +155,12 @@ if ($embed) {
                     <div class="col-md-4">
                         <div class="card stat-card h-100">
                             <div class="card-body text-center">
-                                <div class="text-muted small text-uppercase tracking-wide mb-1">Transactions</div>
-                                <div class="fw-bold" style="font-size:1.35rem;"><?php echo count($transactions); ?></div>
+                                <div class="text-muted small text-uppercase tracking-wide mb-1">Year Debt</div>
+                                <?php $debt = max(0.0, $annual_target - $ytd_paid); ?>
+                                <div class="fw-bold" style="font-size:1.35rem; color: <?php echo $debt > 0.01 ? '#dc2626' : '#16a34a'; ?>;">
+                                    GH₵ <?php echo number_format($debt, 2); ?>
+                                </div>
+                                <small class="text-muted"><?php echo $debt > 0.01 ? 'Outstanding' : 'Cleared'; ?></small>
                             </div>
                         </div>
                     </div>
@@ -274,6 +278,12 @@ require_once __DIR__ . '/../includes/header.php';
             </div>
             <div class="mt-2 text-center">
                 <strong>GH₵ <?php echo number_format($ytd_paid, 2); ?></strong> of <strong>GH₵ <?php echo number_format($annual_target, 2); ?></strong>
+                <?php $debt = max(0.0, $annual_target - $ytd_paid); ?>
+                <?php if ($debt > 0.01): ?>
+                    <br><span class="text-danger fw-bold">Year debt: GH₵ <?php echo number_format($debt, 2); ?></span>
+                <?php else: ?>
+                    <br><span class="text-success fw-bold">✓ Target cleared</span>
+                <?php endif; ?>
             </div>
         </div>
     </div>

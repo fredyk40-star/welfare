@@ -418,10 +418,8 @@ switch ($action) {
                 $yearly_stmt = $db->prepare("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE member_id = :mid AND billing_cycle_year = :y AND status != 'void'");
                 $yearly_stmt->execute([':mid' => $mid, ':y' => $billing_year]);
                 $yearly_total = $yearly_stmt->fetch()['total'];
-                $settings_stmt = $db->prepare("SELECT annual_amount FROM settings WHERE id = 1");
-                $settings_stmt->execute();
-                $settings = $settings_stmt->fetch();
-                $annual_limit = $settings ? $settings['annual_amount'] : 0;
+                $year_target = getYearlyTarget($db, $billing_year);
+                $annual_limit = $year_target['annual_amount'];
                 // Match the single "Record Payment" behaviour: only enforce the limit
                 // when one is actually configured. Previously a missing/zero annual_amount
                 // (the default) made EVERY batch payment fail the limit check.

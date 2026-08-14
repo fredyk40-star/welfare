@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if (!$dt) {
                 $error = 'Invalid date or time format.';
             } else {
-                $settings = getWelfareSettings($db);
+                $settings = getYearlyTarget($db, date('Y'));
                 $annual_limit = $settings['annual_amount'];
                 $yearly_total = 0;
                 if ($annual_limit > 0) {
@@ -120,20 +120,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
 }
 
-// Get settings
-$settings = getWelfareSettings($db);
+// Get settings for current calendar year
+$current_year = date('Y');
+$settings = getYearlyTarget($db, $current_year);
 $annual_target = $settings['annual_amount'];
 $monthly_target = $settings['monthly_amount'];
 if ($annual_target <= 0) $annual_target = 1;
 if ($monthly_target <= 0) $monthly_target = 1;
 
-// Yearly total
+// Yearly total for current year
 $current_year = date('Y');
-$yearly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-                 WHERE member_id = :member_id AND billing_cycle_year = :year AND status != 'void'";
-$yearly_stmt = $db->prepare($yearly_query);
-$yearly_stmt->execute([':member_id' => $member_id, ':year' => $current_year]);
-$yearly_total = $yearly_stmt->fetch()['total'];
+$year_stats = getMemberYearStats($db, $member_id, $current_year);
+$yearly_total = $year_stats['paid'];
+$annual_target = $year_stats['target'];
+$monthly_target = $year_stats['monthly_target'];
+$year_debt = $year_stats['debt'];
 
 // Monthly breakdown for current year
 $monthly_breakdown_query = "SELECT billing_cycle_month, COALESCE(SUM(amount), 0) as total 
@@ -222,6 +223,8 @@ $years_stmt = $db->prepare($years_query);
 $years_stmt->execute([':member_id' => $member_id]);
 $available_years = $years_stmt->fetchAll(PDO::FETCH_COLUMN);
 
+$yearly_history = getMemberYearlyHistory($db, $member_id);
+
 $treasurer_email = '';
 $treasurer_stmt = $db->prepare("SELECT email FROM members WHERE member_id = :mid");
 $treasurer_stmt->execute([':mid' => $_SESSION['user_id']]);
@@ -300,6 +303,11 @@ if ($treasurer_row) {
             <h6>Yearly Total</h6>
             <h4>GH₵ <?php echo number_format($yearly_total, 2); ?></h4>
             <small>of GH₵ <?php echo number_format($annual_target, 2); ?> target</small>
+            <?php if ($year_debt > 0.01): ?>
+                <br><small class="text-danger fw-bold">Year debt: GH₵ <?php echo number_format($year_debt, 2); ?></small>
+            <?php else: ?>
+                <br><small class="text-success fw-bold">✓ Cleared</small>
+            <?php endif; ?>
         </div>
     </div>
     <div class="col-sm-6 col-md-4 mb-3">
@@ -419,6 +427,60 @@ if ($treasurer_row) {
                     <a href="/treasurer/statement.php?member_id=<?php echo urlencode($member_id); ?>&export=pdf" target="_blank" class="btn btn-danger">📄 Export Statement PDF</a>
                     <a href="/treasurer/statement.php?member_id=<?php echo urlencode($member_id); ?>&export=csv" class="btn btn-success">📊 Export Statement CSV</a>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Year-by-Year History -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">📊 Year-by-Year Progress</h5>
+            </div>
+            <div class="card-body">
+                <?php if (empty($yearly_history)): ?>
+                    <p class="text-muted text-center">No transaction history yet.</p>
+                <?php else: ?>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Year</th>
+                                    <th>Annual Target</th>
+                                    <th>Total Paid</th>
+                                    <th>Progress</th>
+                                    <th>Year Debt</th>
+                                    <th>Transactions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($yearly_history as $hist): ?>
+                                    <tr>
+                                        <td><strong><?php echo date('Y', mktime(0,0,0,1,1,(int)($hist['year'] ?? date('Y')))); ?></strong></td>
+                                        <td>GH₵ <?php echo number_format($hist['target'], 2); ?></td>
+                                        <td class="text-success fw-bold">GH₵ <?php echo number_format($hist['paid'], 2); ?></td>
+                                        <td>
+                                            <div class="progress" style="height: 10px; min-width: 120px;">
+                                                <div class="progress-bar bg-<?php echo $hist['pct'] >= 100 ? 'success' : ($hist['pct'] >= 50 ? 'warning' : 'danger'); ?>" style="width: <?php echo min($hist['pct'], 100); ?>%;"></div>
+                                            </div>
+                                            <small><?php echo number_format($hist['pct'], 1); ?>%</small>
+                                        </td>
+                                        <td>
+                                            <?php if ($hist['debt'] > 0.01): ?>
+                                                <span class="text-danger fw-bold">GH₵ <?php echo number_format($hist['debt'], 2); ?></span>
+                                            <?php else: ?>
+                                                <span class="text-success">✓ Cleared</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><?php echo (int)($hist['tx_count'] ?? 0); ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>

@@ -86,8 +86,9 @@ $current_year = date('Y');
 $dashboard_error = '';
 
 try {
-    // Get welfare settings
-    $settings = getWelfareSettings($db);
+    // Get welfare settings for current calendar year
+    $current_year = date('Y');
+    $settings = getYearlyTarget($db, $current_year);
     $annual_target = $settings['annual_amount'];
     $monthly_target = $settings['monthly_amount'];
 
@@ -106,6 +107,9 @@ try {
     $yearly_stmt = $db->prepare($yearly_query);
     $yearly_stmt->execute([':year' => $current_year]);
     $yearly_total = $yearly_stmt->fetch()['total'];
+
+    // Year debt (shortfall against annual target)
+    $year_debt = max(0.0, $annual_target - $yearly_total);
 
     // Get total members
     $members_query = "SELECT COUNT(*) as total FROM members WHERE member_id != :treasurer_id";
@@ -194,6 +198,7 @@ try {
     error_log('Dashboard error: ' . $e->getMessage());
     $monthly_total = 0;
     $yearly_total = 0;
+    $year_debt = 0;
     $total_members = 0;
     $pending_members = 0;
     $monthly_collection = [];
@@ -222,6 +227,15 @@ try {
             <h5>Yearly Collection</h5>
             <h3>GH₵ <?php echo number_format($yearly_total, 2); ?></h3>
             <small>Current Year</small>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="stat-card blue">
+            <h5>Year Debt</h5>
+            <h3 class="<?php echo $year_debt > 0 ? 'text-danger' : 'text-success'; ?>">
+                GH₵ <?php echo number_format($year_debt, 2); ?>
+            </h3>
+            <small><?php echo $year_debt > 0 ? 'Outstanding' : 'Cleared'; ?></small>
         </div>
     </div>
     <div class="col-md-3 mb-3">
