@@ -657,9 +657,8 @@ if ($treasurer_row) {
                                                 <button class="btn btn-info" 
                                                         data-receipt-no="<?php echo htmlspecialchars($transaction['receipt_no']); ?>"
                                                         data-action="view-receipt">View</button>
-                                                <button class="btn btn-success"
-                                                        data-receipt-no="<?php echo htmlspecialchars($transaction['receipt_no']); ?>"
-                                                        onclick="printReceipt(this.dataset.receiptNo)">Print</button>
+                                                <button class="btn btn-success receipt-print-btn"
+                                                        data-receipt-no="<?php echo htmlspecialchars($transaction['receipt_no']); ?>">Print</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -712,7 +711,7 @@ if ($treasurer_row) {
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" onclick="printStatement()">🖨️ Print / Save as PDF</button>
+                <button type="button" class="btn btn-primary statement-print-btn">🖨️ Print / Save as PDF</button>
             </div>
         </div>
     </div>
@@ -732,13 +731,28 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Receipt print buttons in transaction history (no inline onclick, CSP-safe)
+    document.querySelectorAll('.receipt-print-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const receiptNo = this.getAttribute('data-receipt-no');
+            if (receiptNo) printReceipt(receiptNo);
+        });
+    });
+
     const printReceiptBtn = document.getElementById('printReceiptBtn');
     if (printReceiptBtn) {
         printReceiptBtn.addEventListener('click', function() {
             if (currentReceiptNo) printReceipt(currentReceiptNo);
         });
     }
-    
+
+    // Statement print button in statement modal footer (no inline onclick, CSP-safe)
+    document.querySelectorAll('.statement-print-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            printStatement();
+        });
+    });
+
     // Load statement when modal is shown
     const statementModalEl = document.getElementById('statementModal');
     if (statementModalEl) {
