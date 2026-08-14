@@ -92,27 +92,21 @@ switch ($action) {
         
         // Build query based on user type
         if ($is_treasurer) {
-            // Treasurer can view any member's receipt - allow optional member_id parameter
+            // Treasurer must provide member_id to view a receipt.
             $target_member_id = cleanInput($_GET['member_id'] ?? '');
-            if ($target_member_id) {
-                $query = "SELECT t.*, m.full_name 
-                          FROM transactions t 
-                          JOIN members m ON t.member_id = m.member_id 
-                          WHERE t.receipt_no = :receipt_no AND t.member_id = :member_id";
-                $stmt = $db->prepare($query);
-                $stmt->execute([
-                    ':receipt_no' => $receipt_no,
-                    ':member_id' => $target_member_id
-                ]);
-            } else {
-                // No member_id provided - treasurer can view by receipt_no only
-                $query = "SELECT t.*, m.full_name 
-                          FROM transactions t 
-                          JOIN members m ON t.member_id = m.member_id 
-                          WHERE t.receipt_no = :receipt_no";
-                $stmt = $db->prepare($query);
-                $stmt->execute([':receipt_no' => $receipt_no]);
+            if (!$target_member_id) {
+                echo json_encode(['success' => false, 'message' => 'Member ID is required']);
+                exit();
             }
+            $query = "SELECT t.*, m.full_name 
+                      FROM transactions t 
+                      JOIN members m ON t.member_id = m.member_id 
+                      WHERE t.receipt_no = :receipt_no AND t.member_id = :member_id";
+            $stmt = $db->prepare($query);
+            $stmt->execute([
+                ':receipt_no' => $receipt_no,
+                ':member_id' => $target_member_id
+            ]);
         } else {
             // Member can only view their own receipts
             $query = "SELECT t.*, m.full_name 
@@ -302,8 +296,13 @@ switch ($action) {
             echo json_encode(['success' => false, 'message' => 'Invalid request']);
             exit();
         }
-        $stmt = $db->prepare("UPDATE transactions SET status = 'void', notes = :reason WHERE id = :id AND status != 'void'");
-        $result = $stmt->execute([':reason' => $reason, ':id' => $transaction_id]);
+        // Only allow voiding transactions recorded by the authenticated treasurer.
+        $stmt = $db->prepare("UPDATE transactions SET status = 'void', notes = :reason WHERE id = :id AND status != 'void' AND treasurer_id = :treasurer_id");
+        $result = $stmt->execute([
+            ':reason' => $reason,
+            ':id' => $transaction_id,
+            ':treasurer_id' => $_SESSION['user_id']
+        ]);
         if ($result && $stmt->rowCount() > 0) {
             logAudit($_SESSION['user_id'], "Voided transaction ID {$transaction_id}: {$reason}");
             echo json_encode(['success' => true, 'message' => 'Transaction voided']);
@@ -347,6 +346,10 @@ switch ($action) {
         }
         if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
             echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+            exit();
+        }
+        if (!checkRateLimit($_SESSION['user_id'] ?? getClientIp(), 3, 300, '%batch_payment%')) {
+            echo json_encode(['success' => false, 'message' => 'Rate limit exceeded. Please try again later.']);
             exit();
         }
         // "Record for all active members" mode: ignore the typed IDs and use every
@@ -410,6 +413,11 @@ switch ($action) {
             foreach ($member_ids as $mid) {
                 $mid = cleanInput($mid);
                 if (empty($mid)) continue;
+                if (!preg_match('/^[A-Z0-9\-]+$/i', $mid)) {
+                    $fail_count++;
+                    $failures[] = ['member_id' => $mid, 'reason' => 'Invalid member ID format'];
+                    continue;
+                }
                 $member_check = $db->prepare("SELECT id FROM members WHERE member_id = :mid");
                 $member_check->execute([':mid' => $mid]);
                 if (!$member_check->fetch()) { $fail_count++; $failures[] = ['member_id' => $mid, 'reason' => 'Member ID not found']; continue; }
