@@ -113,10 +113,15 @@ function blobDeleteUrl($value) {
  */
 function displayPhotoUrl($value) {
     if (empty($value)) return '';
-    if (strpos($value, 'http') === 0) {
-        return $value; // already a Blob/public URL
+    if (strpos($value, 'http') !== 0) {
+        return APP_URL . '/uploads/photos/' . basename($value);
     }
-    return APP_URL . '/uploads/photos/' . basename($value);
+    // Private blobs cannot be rendered directly in the browser (403).
+    // Route them through the server-side proxy so the read token stays secret.
+    if (strpos($value, 'private.blob.vercel-storage.com') !== false) {
+        return APP_URL . '/api/blob.php?url=' . urlencode($value);
+    }
+    return $value; // public blob URL
 }
 
 /**
@@ -129,6 +134,11 @@ function displayPhotoUrl($value) {
 function photoValueForApi($value) {
     if (empty($value)) return '';
     if (preg_match('#^https?://#i', $value)) {
+        // Private blobs must also go through the proxy in JSON responses,
+        // because the browser will use this URL directly in <img> tags.
+        if (strpos($value, 'private.blob.vercel-storage.com') !== false) {
+            return APP_URL . '/api/blob.php?url=' . urlencode($value);
+        }
         return $value;
     }
     return basename($value);
