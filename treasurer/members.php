@@ -239,6 +239,7 @@ document.addEventListener('click', function (e) {
     const btn = e.target.closest ? e.target.closest('[data-action="update_status"]') : null;
     if (!btn) return;
     e.preventDefault();
+    e.preventDefault();
 
     const memberId = btn.getAttribute('data-member-id');
     const newStatus = btn.getAttribute('data-status');
@@ -284,6 +285,16 @@ document.addEventListener('click', function (e) {
         btn.innerHTML = originalHtml;
         alert('Network error. Please try again.');
     });
+});
+
+// Print members list
+document.addEventListener('DOMContentLoaded', function() {
+    var printBtn = document.getElementById('printMembersListBtn');
+    if (printBtn) {
+        printBtn.addEventListener('click', function() {
+            window.print();
+        });
+    }
 });
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

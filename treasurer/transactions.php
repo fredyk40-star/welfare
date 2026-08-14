@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $error = 'Member not found.';
                 } else {
                     // Check annual limit (exclude voided transactions)
-                    $settings = getWelfareSettings($db);
+                    $settings = getYearlyTarget($db, $billing_year);
                     $annual_limit = $settings['annual_amount'];
                     $yearly_total = 0;
                     if ($annual_limit > 0) {

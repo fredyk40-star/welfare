@@ -464,6 +464,33 @@ switch ($action) {
         }
 
         $result = updateMemberStatus($db, $member_id, $new_status, $_SESSION['user_id']);
+
+        // Notify the member by email about the status change (best-effort).
+        if ($result['success']) {
+            $stmt = $db->prepare("SELECT full_name, email FROM members WHERE member_id = :mid");
+            $stmt->execute([':mid' => $member_id]);
+            $member_row = $stmt->fetch();
+            if ($member_row && !empty($member_row['email'])) {
+                $status_labels = [
+                    'active' => 'reactivated',
+                    'suspended' => 'suspended',
+                    'deactivated' => 'deactivated',
+                    'deleted' => 'deleted',
+                ];
+                $verb = $status_labels[$new_status] ?? $new_status;
+                $subject = 'Your ' . APP_NAME . ' account has been ' . $verb;
+                $message = '<p>Dear ' . htmlspecialchars($member_row['full_name']) . ',</p>';
+                $message .= '<p>Your welfare account status has been updated to: <strong>' . htmlspecialchars($verb) . '</strong>.</p>';
+                if ($new_status === 'suspended' || $new_status === 'deactivated' || $new_status === 'deleted') {
+                    $message .= '<p>You will not be able to log in while your account is ' . htmlspecialchars($verb) . '. Please contact the treasurer if you believe this is a mistake.</p>';
+                } elseif ($new_status === 'active') {
+                    $message .= '<p>You can now log in to your account.</p>';
+                }
+                $message .= '<p>— ' . htmlspecialchars(APP_NAME) . ' Team</p>';
+                @sendEmail($member_row['email'], $subject, $message);
+            }
+        }
+
         echo json_encode($result);
         break;
 

@@ -1,22 +1,6 @@
 
-function renderReceipt($transaction, $show_billing_period = true, $show_member_id = true) {
-    $member_label = htmlspecialchars($transaction['full_name']);
-    if ($show_member_id && !empty($transaction['member_id'])) {
-        $member_label .= ' (' . htmlspecialchars($transaction['member_id']) . ')';
-    }
-    $billing_period = '';
-    if ($show_billing_period) {
-        if (!empty($transaction['billing_cycle_month'])) {
-            $billing_period = formatBillingPeriod($transaction['billing_cycle_month'], $transaction['billing_cycle_year'] ?? date('Y'));
-        } elseif (!empty($transaction['billing_cycle_year'])) {
-            $billing_period = htmlspecialchars($transaction['billing_cycle_year']);
-        }
-    }
-    $ts = strtotime($transaction['transaction_date']);
-    $date = $ts ? htmlspecialchars(date('F j, Y g:i A', $ts)) : 'N/A';
-    ?>
-    <!DOCTYPE html>
-    <html>
+<!DOCTYPE html>
+<html>
     <head>
         <title>Receipt <?php echo htmlspecialchars($transaction['receipt_no']); ?></title>
         <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
@@ -73,4 +57,3 @@ function renderReceipt($transaction, $show_billing_period = true, $show_member_i
         </div>
     </body>
     </html>
-    <?php
