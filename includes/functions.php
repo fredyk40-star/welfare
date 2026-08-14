@@ -328,59 +328,128 @@ function sendEmail($to, $subject, $message, $cc = null) {
         }
     }
 
-    $api_key = getenv('RESEND_API_KEY');
-    if (!$api_key) {
-        error_log('sendEmail aborted: RESEND_API_KEY is not configured');
+    $smtp_host = getenv('SMTP_HOST') ?: 'smtp.resend.com';
+    $smtp_port = (int)(getenv('SMTP_PORT') ?: 465);
+    $smtp_username = getenv('SMTP_USERNAME') ?: 'resend';
+    $smtp_password = getenv('SMTP_PASSWORD');
+    if (empty($smtp_password)) {
+        error_log('sendEmail aborted: SMTP_PASSWORD is not configured');
         return false;
     }
 
     $from_email = getenv('RESEND_FROM_EMAIL') ?: 'noreply@gyf.org';
     $from_name = sanitizeEmailValue(APP_NAME);
-    $from = $from_name . ' <' . $from_email . '>';
+    $from_display = $from_name . ' <' . $from_email . '>';
 
-    $payload = [
-        'from' => $from,
-        'to' => [$to],
-        'subject' => $subject,
-        'html' => $message
-    ];
-    if (!empty($cc_list)) {
-        $payload['cc'] = $cc_list;
+    $recipients = array_filter(array_map('sanitizeEmailValue', (array)$to));
+    if (empty($recipients)) {
+        return false;
     }
+    $to = $recipients[0];
 
-    $ch = curl_init('https://api.resend.com/emails');
-    curl_setopt_array($ch, [
-        CURLOPT_HTTPHEADER => [
-            'Authorization: Bearer ' . $api_key,
-            'Content-Type: application/json'
-        ],
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 30
-    ]);
+    $conn = @stream_socket_client(
+        'ssl://' . $smtp_host . ':' . $smtp_port,
+        $errno, $errstr, 30
+    );
 
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curl_error = curl_error($ch);
-
-    if ($curl_error) {
-        error_log('sendEmail cURL error: ' . $curl_error);
+    if (!$conn) {
+        error_log('SMTP connection failed (' . $smtp_host . ':' . $smtp_port . '): ' . $errstr);
         return false;
     }
 
-    if ($http_code >= 200 && $http_code < 300) {
-        return true;
+    // Read SMTP response lines. Multi-line responses end with "code " (space).
+    $readResponse = function($conn, $expectCode = null) {
+        $response = '';
+        while ($line = fgets($conn, 515)) {
+            $response .= $line;
+            if (isset($line[3]) && $line[3] === ' ') {
+                break;
+            }
+        }
+        $code = (int)($response[0] . $response[1] . $response[2] ?? '000');
+        if ($expectCode !== null && $code !== $expectCode) {
+            error_log('SMTP unexpected response (expected ' . $expectCode . '): ' . trim($response));
+            fclose($conn);
+            return false;
+        }
+        return $response;
+    };
+
+    // Send a raw SMTP command and read the response.
+    $sendCmd = function($conn, $cmd, $expectCode = null) use ($readResponse) {
+        fwrite($conn, $cmd . "\r\n");
+        return $readResponse($conn, $expectCode);
+    };
+
+    // Greeting
+    if ($readResponse($conn, 220) === false) { fclose($conn); return false; }
+
+    // EHLO
+    if ($sendCmd($conn, 'EHLO ' . gethostname(), 250) === false) {
+        // Some servers only support HELO
+        if ($sendCmd($conn, 'HELO ' . gethostname(), 250) === false) {
+            fclose($conn);
+            return false;
+        }
     }
 
-    $error_message = 'sendEmail API error (HTTP ' . $http_code . '): ' . $response . ' | from=' . $from . ' to=' . $to;
-    if (strpos($response, 'domain is not verified') !== false) {
-        $error_message .= ' | ACTION REQUIRED: Verify your sender domain in Resend dashboard (https://resend.com/domains)';
-    } elseif (strpos($response, 'quota') !== false || strpos($response, 'rate limit') !== false) {
-        $error_message .= ' | ACTION REQUIRED: Check your Resend account quota and billing';
+    // AUTH PLAIN
+    $auth_string = base64_encode("\0" . $smtp_username . "\0" . $smtp_password);
+    if ($sendCmd($conn, 'AUTH PLAIN ' . $auth_string, 235) === false) {
+        fclose($conn);
+        return false;
     }
-    error_log($error_message);
-    return false;
+
+    // MAIL FROM
+    if ($sendCmd($conn, 'MAIL FROM:<' . $from_email . '>', 250) === false) {
+        fclose($conn);
+        return false;
+    }
+
+    // RCPT TO (primary recipient)
+    if ($sendCmd($conn, 'RCPT TO:<' . $to . '>', 250) === false) {
+        fclose($conn);
+        return false;
+    }
+
+    // RCPT TO (CC recipients)
+    foreach ($cc_list as $cc_addr) {
+        if ($sendCmd($conn, 'RCPT TO:<' . $cc_addr . '>', 250) === false) {
+            fclose($conn);
+            return false;
+        }
+    }
+
+    // DATA
+    if ($sendCmd($conn, 'DATA', 354) === false) {
+        fclose($conn);
+        return false;
+    }
+
+    // Build headers
+    $headers = [];
+    $headers[] = 'From: ' . $from_display;
+    $headers[] = 'To: ' . $to;
+    if (!empty($cc_list)) {
+        $headers[] = 'Cc: ' . implode(', ', $cc_list);
+    }
+    $headers[] = 'Subject: ' . $subject;
+    $headers[] = 'MIME-Version: 1.0';
+    $headers[] = 'Content-Type: text/html; charset=UTF-8';
+    $headers[] = 'Date: ' . date('r');
+    $headers[] = 'Message-ID: <' . uniqid() . '@' . $smtp_host . '>';
+
+    $data = implode("\r\n", $headers) . "\r\n\r\n" . $message . "\r\n.\r\n";
+    fwrite($conn, $data);
+
+    // Read DATA response
+    $readResponse($conn, 250);
+
+    // QUIT
+    $sendCmd($conn, 'QUIT', 221);
+    fclose($conn);
+
+    return true;
 }
 
 function sendReceiptEmail($member_email, $receipt_data, $member_photo = null, $treasurer_email = null) {
