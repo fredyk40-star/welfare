@@ -188,6 +188,7 @@ require_once __DIR__ . '/../includes/header.php';
                 
                 <h6>Transaction History:</h6>
                 <p>A filterable table showing all the member's transactions. You can filter by year, month, and payment method. Each row has buttons to view or print the receipt.</p>
+                <p><strong>Print Receipt:</strong> Click the green <strong>Print</strong> button on any transaction row to open a print-ready receipt in a new window. The receipt includes all payment details and can be printed or saved as PDF.</p>
                 
                 <h6>Export:</h6>
                 <p>You can export the member's statement as PDF or CSV from the Actions section.</p>
@@ -414,6 +415,15 @@ require_once __DIR__ . '/../includes/header.php';
                             <li>You can send reminders directly from there</li>
                         </ol>
                     </div>
+                    <div class="col-md-6 mb-3">
+                        <h6>How to search for a member:</h6>
+                        <ol>
+                            <li>Go to the <a href="<?php echo APP_URL; ?>/treasurer/dashboard.php">Dashboard</a></li>
+                            <li>Type in the search box at the top (Member ID, Phone, or Name)</li>
+                            <li>Results appear instantly with photos</li>
+                            <li>Click a result to open the Member Detail page</li>
+                        </ol>
+                    </div>
                 </div>
             </div>
         </div>
@@ -490,3 +500,7 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+
+
+
+

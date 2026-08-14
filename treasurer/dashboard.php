@@ -7,6 +7,61 @@ if (!isTreasurer()) {
     redirectTo('/member/login.php');
 }
 
+// Handle AJAX search request
+if (isset($_GET['ajax']) && $_GET['ajax'] == '1' && isset($_GET['search'])) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $search_term = cleanInput($_GET['search']);
+    $search_query = "SELECT member_id, full_name, passport_photo, phone, email 
+                    FROM members 
+                    WHERE (member_id LIKE :search1 OR full_name LIKE :search2 OR phone LIKE :search3)
+                    AND member_id != :treasurer_id
+                    ORDER BY full_name ASC
+                    LIMIT 20";
+    $search_stmt = $db->prepare($search_query);
+    $search_param = "%{$search_term}%";
+    $search_stmt->execute([
+        ':search1' => $search_param,
+        ':search2' => $search_param,
+        ':search3' => $search_param,
+        ':treasurer_id' => TREASURER_MEMBER_ID
+    ]);
+    $search_results = $search_stmt->fetchAll();
+    
+    if (empty($search_results)) {
+        echo '<div class="text-center py-4 text-muted">No members found matching "' . htmlspecialchars($search_term) . '"</div>';
+    } else {
+        echo '<div class="row g-3">';
+        foreach ($search_results as $member) {
+            $photo_html = '';
+            if ($member['passport_photo']) {
+                $photo_url = displayPhotoUrl($member['passport_photo']);
+                $photo_html = '<img src="' . htmlspecialchars($photo_url) . '" class="member-photo me-3" alt="Photo" style="width: 50px; height: 50px; object-fit: cover;">';
+            } else {
+                $photo_html = '<div class="member-photo bg-secondary d-flex align-items-center justify-content-center text-white me-3" style="width: 50px; height: 50px; font-size: 1.2rem;">' . strtoupper(substr($member['full_name'], 0, 1)) . '</div>';
+            }
+            echo '<div class="col-12 col-sm-6 col-md-4">';
+            echo '<a href="' . APP_URL . '/treasurer/member_detail.php?member_id=' . urlencode($member['member_id']) . '" class="member-result-card card h-100 text-decoration-none" style="transition: transform 0.2s, box-shadow 0.2s;">';
+            echo '<div class="card-body d-flex align-items-center p-3">';
+            echo $photo_html;
+            echo '<div>';
+            echo '<h6 class="mb-1 text-dark">' . htmlspecialchars($member['full_name']) . '</h6>';
+            echo '<small class="text-muted d-block">' . htmlspecialchars($member['member_id']) . '</small>';
+            echo '<small class="text-muted d-block">' . htmlspecialchars($member['phone']) . '</small>';
+            if (!empty($member['email'])) {
+                echo '<small class="text-muted d-block">' . htmlspecialchars($member['email']) . '</small>';
+            }
+            echo '</div>';
+            echo '</div>';
+            echo '</a>';
+            echo '</div>';
+        }
+        echo '</div>';
+    }
+    exit();
+}
+
 require_once __DIR__ . '/../includes/header.php';
 
 $database = new Database();
@@ -45,6 +100,28 @@ try {
     $members_stmt = $db->prepare($members_query);
     $members_stmt->execute([':treasurer_id' => TREASURER_MEMBER_ID]);
     $total_members = $members_stmt->fetch()['total'];
+
+    // Search members
+    $search_results = [];
+    $search_term = '';
+    if (isset($_GET['search'])) {
+        $search_term = cleanInput($_GET['search']);
+        $search_query = "SELECT member_id, full_name, passport_photo, phone, email 
+                        FROM members 
+                        WHERE (member_id LIKE :search1 OR full_name LIKE :search2 OR phone LIKE :search3)
+                        AND member_id != :treasurer_id
+                        ORDER BY full_name ASC
+                        LIMIT 20";
+        $search_stmt = $db->prepare($search_query);
+        $search_param = "%{$search_term}%";
+        $search_stmt->execute([
+            ':search1' => $search_param,
+            ':search2' => $search_param,
+            ':search3' => $search_param,
+            ':treasurer_id' => TREASURER_MEMBER_ID
+        ]);
+        $search_results = $search_stmt->fetchAll();
+    }
 
     // Get pending members (members who haven't paid this month)
     $pending_query = "SELECT COUNT(*) as total FROM members m 
@@ -135,6 +212,38 @@ try {
             <h5>Pending Payments</h5>
             <h3><?php echo $pending_members; ?></h3>
             <small>This Month</small>
+</div>
+  </div>
+</div>
+
+<!-- Member Search -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">���� Search Member</h5>
+            </div>
+            <div class="card-body">
+                <form id="memberSearchForm" class="row g-3">
+                    <div class="col-md-8">
+                        <label for="searchInput" class="form-label visually-hidden">Search member by ID, phone, or name</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control form-control-lg" id="searchInput" name="search" 
+                                   placeholder="Search by Member ID, Phone Number, or Name..." autocomplete="off">
+                            <button class="btn btn-primary" type="submit">
+                                <i class="bi bi-search"></i> Search
+                            </button>
+                        </div>
+                        <small class="text-muted">Search by Member ID (e.g., GYF-123456), Phone Number, or Full Name</small>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="button" class="btn btn-outline-secondary w-100" id="clearSearchBtn">
+                            <i class="bi bi-x-circle"></i> Clear
+                        </button>
+                    </div>
+                </form>
+                <div id="searchResults" class="mt-3"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -522,6 +631,57 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Member Search functionality
+let searchDebounceTimer = null;
+const searchInput = document.getElementById('searchInput');
+const searchResults = document.getElementById('searchResults');
+const searchForm = document.getElementById('memberSearchForm');
+const clearBtn = document.getElementById('clearSearchBtn');
+
+if (searchInput && searchResults) {
+    searchInput.addEventListener('input', function() {
+        clearTimeout(searchDebounceTimer);
+        const query = this.value.trim();
+        
+        if (query.length < 2) {
+            searchResults.innerHTML = '';
+            return;
+        }
+        
+        searchDebounceTimer = setTimeout(() => {
+            searchResults.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div><span class="ms-2">Searching...</span></div>';
+            
+            fetch(`<?php echo APP_URL; ?>/treasurer/dashboard.php?search=${encodeURIComponent(query)}&ajax=1`)
+                .then(response => response.text())
+                .then(html => {
+                    searchResults.innerHTML = html;
+                })
+                .catch(() => {
+                    searchResults.innerHTML = '<div class="alert alert-danger">Search failed. Please try again.</div>';
+                });
+        }, 300);
+    });
+    
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+            searchInput.value = '';
+            searchResults.innerHTML = '';
+            searchInput.focus();
+        });
+    }
+    
+    // Handle form submission (Enter key)
+    if (searchForm) {
+        searchForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const query = searchInput.value.trim();
+            if (query.length >= 2) {
+                window.location.href = `<?php echo APP_URL; ?>/treasurer/dashboard.php?search=${encodeURIComponent(query)}`;
+            }
+        });
+    }
+}
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

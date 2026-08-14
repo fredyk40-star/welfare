@@ -592,14 +592,14 @@ if ($treasurer_row) {
                                             <?php echo $transaction['billing_cycle_month'] ? formatBillingPeriod($transaction['billing_cycle_month'], $transaction['billing_cycle_year']) : 'Year ' . htmlspecialchars($transaction['billing_cycle_year']); ?>
                                         </td>
                                         <td><?php echo !empty($transaction['transaction_date']) ? htmlspecialchars(date('M d, Y g:i A', strtotime($transaction['transaction_date']))) : 'N/A'; ?></td>
-                                        <td>
+<td>
                                             <div class="btn-group btn-group-sm">
                                                 <button class="btn btn-info" 
                                                         data-receipt-no="<?php echo htmlspecialchars($transaction['receipt_no']); ?>"
                                                         data-action="view-receipt">View</button>
                                                 <button class="btn btn-success"
                                                         data-receipt-no="<?php echo htmlspecialchars($transaction['receipt_no']); ?>"
-                                                        data-action="print-receipt">Print</button>
+                                                        onclick="printReceipt(this.dataset.receiptNo)">Print</button>
                                             </div>
                                         </td>
                                     </tr>
@@ -666,9 +666,7 @@ document.addEventListener('DOMContentLoaded', function() {
         btn.addEventListener('click', function() {
             const receiptNo = this.dataset.receiptNo;
             const action = this.dataset.action;
-            if (action === 'print-receipt') {
-                printReceipt(receiptNo);
-            } else {
+            if (action === 'view-receipt') {
                 viewReceipt(receiptNo);
             }
         });
@@ -676,7 +674,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const printReceiptBtn = document.getElementById('printReceiptBtn');
     if (printReceiptBtn) {
-        printReceiptBtn.addEventListener('click', printReceipt);
+        printReceiptBtn.addEventListener('click', function() {
+            if (currentReceiptNo) printReceipt(currentReceiptNo);
+        });
     }
     
     // Load statement when modal is shown
@@ -705,10 +705,10 @@ function viewReceipt(receiptNo) {
         });
 }
 
-function printReceipt() {
-    if (!currentReceiptNo) return;
+function printReceipt(receiptNo) {
+    if (!receiptNo) return;
     const printWindow = window.open(
-        `<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(currentReceiptNo)}&member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`,
+        `<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(receiptNo)}&member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`,
         'PrintReceipt',
         'width=800,height=600'
     );
