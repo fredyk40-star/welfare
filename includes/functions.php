@@ -708,8 +708,8 @@ function updateWelfareSettings($db, $annual_amount, $monthly_amount) {
     $annual = (float) $annual_amount;
     $monthly = (float) $monthly_amount;
     
-    $stmt = $db->prepare("INSERT INTO settings (id, annual_amount, monthly_amount) VALUES (1, :annual, :monthly) ON DUPLICATE KEY UPDATE annual_amount = :annual, monthly_amount = :monthly");
-    return $stmt->execute([':annual' => $annual, ':monthly' => $monthly]);
+    $stmt = $db->prepare("INSERT INTO settings (id, annual_amount, monthly_amount) VALUES (1, :annual, :monthly) ON DUPLICATE KEY UPDATE annual_amount = :annual2, monthly_amount = :monthly2");
+    return $stmt->execute([':annual' => $annual, ':monthly' => $monthly, ':annual2' => $annual, ':monthly2' => $monthly]);
 }
 
 /**

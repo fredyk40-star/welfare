@@ -58,8 +58,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         } elseif ($annual_amount === false || $monthly_amount === false || $annual_amount <= 0 || $monthly_amount <= 0) {
             $error = 'Invalid amounts. Please enter positive numbers.';
         } else {
-            $stmt = $db->prepare("INSERT INTO yearly_targets (year, annual_amount, monthly_amount) VALUES (:yr, :annual, :monthly) ON DUPLICATE KEY UPDATE annual_amount = :annual, monthly_amount = :monthly, updated_at = NOW()");
-            if ($stmt->execute([':yr' => $year, ':annual' => $annual_amount, ':monthly' => $monthly_amount])) {
+            $stmt = $db->prepare("INSERT INTO yearly_targets (year, annual_amount, monthly_amount) VALUES (:yr, :annual, :monthly) ON DUPLICATE KEY UPDATE annual_amount = :annual2, monthly_amount = :monthly2, updated_at = NOW()");
+            if ($stmt->execute([':yr' => $year, ':annual' => $annual_amount, ':monthly' => $monthly_amount, ':annual2' => $annual_amount, ':monthly2' => $monthly_amount])) {
                 logAudit($_SESSION['user_id'] ?? 'system', "Updated yearly target for {$year}: Annual={$annual_amount}, Monthly={$monthly_amount}");
                 $success = "Target for {$year} updated successfully.";
             } else {
