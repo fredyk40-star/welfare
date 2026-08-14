@@ -412,7 +412,7 @@ try {
                     <div class="d-flex align-items-end justify-content-between chart-bars" style="height: 200px;">
                         <?php
                         $max_val = max($monthly_collection);
-                        if ($max_val === 0) $max_val = 1;
+                        if (!$max_val) $max_val = 1;
                         $months_short = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
                         for ($m = 1; $m <= 12; $m++):
                             $val = $monthly_collection[$m] ?? 0;
