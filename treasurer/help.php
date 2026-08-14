@@ -309,6 +309,43 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
+<!-- Email & Notifications -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">📧 Email & Notifications</h5>
+            </div>
+            <div class="card-body">
+                <p>The system sends automatic emails for several events. All emails are sent via Gmail SMTP using the treasurer's email address as the sender.</p>
+                
+                <h6>Emails sent automatically:</h6>
+                <ul>
+                    <li><strong>Payment Receipts:</strong> Sent to the member (and CC'd to the treasurer) whenever a payment is recorded. The receipt includes the member's photo (if uploaded), payment details, and billing period.</li>
+                    <li><strong>Payment Reminders:</strong> Sent to members who haven't paid for the current month. You can send individual reminders from the dashboard or use "Remind All" for everyone.</li>
+                    <li><strong>Password Reset:</strong> Sent when a member or treasurer requests a password reset. The link expires after 1 hour.</li>
+                </ul>
+                
+                <h6>Receipt Email Contents:</h6>
+                <p>Each receipt email includes:</p>
+                <ul>
+                    <li>Member's passport photo (circular avatar) — if they uploaded one during registration</li>
+                    <li>Receipt number, amount, payment method</li>
+                    <li>Billing period and transaction date</li>
+                    <li>GYF Welfare branding</li>
+                </ul>
+                
+                <h6>Email Limits:</h6>
+                <p>Gmail free tier allows up to <strong>500 emails per day</strong>. For a small welfare group, this is more than enough. If you need to send to many members at once, the system batches them automatically.</p>
+                
+                <div class="alert alert-info">
+                    <strong>💡 Tip:</strong> If a member reports not receiving emails, first check their email address in the members list, then ask them to check their spam/junk folder.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Profile -->
 <div class="row mb-4">
     <div class="col-12">
@@ -332,6 +369,45 @@ require_once __DIR__ . '/../includes/header.php';
                 <div class="alert alert-warning">
                     <strong>⚠️ Note:</strong> Your email address cannot be changed from this page. Contact an administrator if you need to update your email.
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Security Features -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0">🔒 Security Features</h5>
+            </div>
+            <div class="card-body">
+                <p>The system includes several security features to protect member data and prevent unauthorized access.</p>
+                
+                <h6>Session Security:</h6>
+                <ul>
+                    <li><strong>Device Fingerprinting:</strong> Each session is bound to the user's IP address and browser. If someone tries to use a session from a different device, they are automatically logged out.</li>
+                    <li><strong>Auto-Logout:</strong> Sessions expire after 1 hour of inactivity. You will be redirected to the login page if you leave the system idle for too long.</li>
+                    <li><strong>Secure Cookies:</strong> Session cookies are HttpOnly and SameSite to prevent XSS and CSRF attacks.</li>
+                    <li><strong>Remember Me:</strong> You can stay logged in for 30 days using the "Remember Me" option. Tokens are securely hashed and rotated on each login.</li>
+                </ul>
+                
+                <h6>Password Reset:</h6>
+                <ul>
+                    <li>Members can reset their password using the <a href="<?php echo APP_URL; ?>/member/forgot-password.php">Forgot Password</a> page with their Member ID</li>
+                    <li>Treasurer can reset using their registered email address</li>
+                    <li>Reset links expire after 1 hour</li>
+                    <li>Rate limiting prevents abuse (max 3 requests per 15 minutes)</li>
+                </ul>
+                
+                <h6>Account Lockout:</h6>
+                <p>After 5 failed login attempts, the account is locked for 15 minutes. This prevents brute-force attacks. You will see a message indicating how long to wait before trying again.</p>
+                
+                <h6>Audit Logging:</h6>
+                <p>All important actions are logged with timestamp, user ID, action description, and IP address. You can view these logs in the <a href="<?php echo APP_URL; ?>/treasurer/audit-logs.php">Audit Logs</a> page.</p>
+                
+                <h6>CSRF Protection:</h6>
+                <p>All forms include CSRF tokens to prevent cross-site request forgery attacks. You never need to worry about this — it works automatically.</p>
             </div>
         </div>
     </div>
@@ -517,6 +593,21 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>Verify the email service is configured correctly</li>
                     <li>Check spam/junk folder</li>
                     <li>Contact support if emails consistently fail</li>
+                </ul>
+                
+                <h6>Password reset not working?</h6>
+                <ul>
+                    <li>Members: Use the <a href="<?php echo APP_URL; ?>/member/forgot-password.php">Forgot Password</a> page and enter your Member ID</li>
+                    <li>Treasurer: Enter your registered email address on the forgot password page</li>
+                    <li>Reset links expire after 1 hour</li>
+                    <li>Check spam folder if you don't see the email</li>
+                </ul>
+                
+                <h6>Member photo not showing in receipt email?</h6>
+                <ul>
+                    <li>Photos are included automatically if the member has uploaded one during registration</li>
+                    <li>The photo appears as a circular avatar at the top of the receipt email</li>
+                    <li>If no photo was uploaded, the receipt is sent without the image (this is normal)</li>
                 </ul>
                 
                 <h6>Member not showing up?</h6>

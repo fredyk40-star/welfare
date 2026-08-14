@@ -2,10 +2,77 @@
 
 ## ✅ Completed Improvements
 
-### 1. Database Indexes (database/init_indexes.sql)
-**What:** Created SQL file with performance-optimizing indexes
-**Impact:** Faster queries on transactions, audit_logs, password_resets, and members tables
-**How to Apply:** Run the SQL file on your MySQL database
+### 1. Gmail SMTP Integration (includes/functions.php)
+**What:** Switched email delivery from Resend API to Gmail SMTP
+**Impact:** Members can now receive emails without domain verification. Gmail free tier allows 500 emails/day.
+**Configuration:**
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USERNAME=addaefrederick40@gmail.com
+SMTP_PASSWORD=your-app-password
+```
+
+### 2. Session Fingerprinting (includes/functions.php, includes/security.php)
+**What:** Each session is bound to the user's IP address + user-agent
+**Impact:** Prevents cross-user session leaks. If a session is used from a different device/IP, it's immediately destroyed.
+**Features:**
+- Custom session cookie name `GYF_SESSION_ID`
+- `session.use_only_cookies = 1` to prevent URL-based session IDs
+- Fingerprint validation on every request
+- Complete logout cleanup (clears all user sessions + remember-me tokens)
+
+### 3. Scrollable Table Containers (assets/css/style.css)
+**What:** Added `.table-scroll-wrapper` CSS class with `max-height: 65vh` and `overflow-y: auto`
+**Impact:** Tables no longer stretch pages. Users scroll within the card. Sticky headers keep column names visible.
+**Applied to:**
+- `treasurer/dashboard.php` — Recent Transactions + Defaulters
+- `treasurer/members.php` — All members
+- `treasurer/transactions.php` — Main table + payment history modal
+- `treasurer/audit-logs.php` — Audit logs
+- `treasurer/profile.php` — Activity log
+- `member/dashboard.php` — Recent transactions
+- `member/transactions.php` — Transaction history
+
+### 4. PWA Splash Screen Fix (includes/header.php, includes/footer.php)
+**What:** Splash screen now only shows on cold start (app opened from home screen icon), not after button clicks
+**Implementation:** Uses `sessionStorage` flag `gyfSplashShown` to skip splash on subsequent navigations
+
+### 5. Private Blob Image Proxy (api/blob.php, includes/blob_storage.php)
+**What:** Created server-side proxy for private Vercel Blob images
+**Impact:** Member photos stored in private blobs now display correctly in browsers. Public blobs load directly for best performance.
+
+### 6. Member Photos in Receipt Emails (includes/functions.php)
+**What:** `sendReceiptEmail()` includes member passport photo in email receipts
+**Impact:** Members receive professional receipts with their photo as a circular avatar at the top
+
+### 7. Password Reset via Email (member/forgot-password.php, member/reset-password.php)
+**What:** Members can reset passwords using Member ID, treasurer can use email
+**Features:**
+- Secure token generation with `random_bytes(32)`
+- 1-hour token expiration
+- Rate limiting (max 3 requests per 15 minutes)
+- Automatic cleanup of expired tokens
+
+### 8. Database Session Handler (includes/functions.php)
+**What:** Custom `DatabaseSessionHandler` for Vercel serverless compatibility
+**Impact:** Sessions persist across all serverless instances, preventing random logouts
+
+### 9. Member Status Management (includes/functions.php, treasurer/members.php)
+**What:** Suspend, deactivate, soft-delete, and 3-strike permanent ban system
+**Impact:** Full lifecycle management of member accounts with audit trail
+
+### 10. Phone Number Normalization (includes/functions.php)
+**What:** `normalizePhoneNumber()` supports Ghana, Nigeria, Kenya, South Africa formats
+**Impact:** Search works regardless of how phone numbers are formatted
+
+### 11. Monthly Contribution Tracking (treasurer/dashboard.php, member/dashboard.php)
+**What:** Bar charts showing monthly contributions, pending payment detection, defaulter lists
+**Impact:** Visual tracking of welfare fund health
+
+### 12. Email Error Logging (includes/functions.php)
+**What:** `sendEmail()` now logs actual `from` and `to` addresses on failure
+**Impact:** Faster debugging of email delivery issues
 
 ### 2. "Remember Me" Functionality (includes/remember_me.php)
 **What:** Secure persistent login with 30-day token expiry
