@@ -4,6 +4,7 @@
  * never need the read token. Only proxies blob.vercel-storage.com URLs.
  */
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/security.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 $url = cleanInput($_GET['url'] ?? '');

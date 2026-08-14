@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/functions.php';
 ?>
 <!DOCTYPE html>
 <html lang="en">

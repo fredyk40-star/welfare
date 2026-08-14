@@ -53,7 +53,7 @@ if (!class_exists('DatabaseSessionHandler')) {
         public function open($path, $name): bool { return (bool) $this->ensureTable(); }
         public function close(): bool { return true; }
         public function read($id): string|false { $db = $this->ensureTable(); if (!$db) return false; $stmt = $db->prepare("SELECT data FROM sessions WHERE id = :id"); $stmt->execute([':id' => $id]); $row = $stmt->fetch(); return $row ? (string) $row['data'] : ''; }
-        public function write($id, $data): bool { $db = $this->ensureTable(); if (!$db) return false; $stmt = $db->prepare("REPLACE INTO sessions (id, data, last_activity) VALUES (:id, :data, :la)"); $stmt->execute([':id' => $id, ':data' => $data, ':la' => time()]); return true; }
+        public function write($id, $data): bool { $db = $this->ensureTable(); if (!$db) return false; $stmt = $db->prepare("REPLACE INTO sessions (id, data, last_activity) VALUES (:id, :data, :la)"); $ok = $stmt->execute([':id' => $id, ':data' => $data, ':la' => time()]); return $ok; }
         public function destroy($id): bool { $db = $this->ensureTable(); if (!$db) return false; $stmt = $db->prepare("DELETE FROM sessions WHERE id = :id"); $stmt->execute([':id' => $id]); return true; }
         public function gc($maxlifetime): int { $db = $this->ensureTable(); if (!$db) return 0; $stmt = $db->prepare("DELETE FROM sessions WHERE last_activity < :cut"); $stmt->execute([':cut' => time() - (int) $maxlifetime]); return $stmt->rowCount(); }
         public function create_sid() { return ''; }
@@ -70,7 +70,9 @@ if (!headers_sent()) {
 }
 
 ini_set('session.use_strict_mode', '1');
+ini_set('session.use_only_cookies', '1');
 if (!headers_sent()) {
+    session_name('GYF_SESSION_ID');
     session_set_cookie_params([
         'lifetime' => SESSION_TIMEOUT,
         'path' => '/',
@@ -83,6 +85,9 @@ if (!headers_sent()) {
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+
+// Validate session fingerprint after session_start so $_SESSION is available.
+validateSessionFingerprint();
 
 // Silent re-auth: if the server-side session was lost but a valid remember-me
 // cookie exists, restore the session instead of bouncing the user to login.

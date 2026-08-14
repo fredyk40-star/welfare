@@ -75,6 +75,31 @@ function getClientIp() {
     return 'unknown';
 }
 
+// Session fingerprint: bind session to client IP + user-agent to prevent
+// session hijacking across devices/users.
+function getSessionFingerprint() {
+    $ip = getClientIp();
+    $ua = isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '';
+    return hash('sha256', $ip . '|' . $ua);
+}
+
+function validateSessionFingerprint() {
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return true;
+    }
+    $current = getSessionFingerprint();
+    if (isset($_SESSION['_fingerprint']) && $_SESSION['_fingerprint'] !== $current) {
+        // Fingerprint mismatch: session is being used from a different device/IP.
+        // Destroy the session to prevent cross-user session leaks.
+        destroySession();
+        error_log('Session fingerprint mismatch: session destroyed for security');
+        return false;
+    }
+    // Set/update fingerprint on each request
+    $_SESSION['_fingerprint'] = $current;
+    return true;
+}
+
 // Rate Limiting
 function checkRateLimit($identifier, $max_attempts = 5, $timeframe = 900, $action_pattern = '%login attempt%') {
     $database = new Database();
@@ -198,7 +223,20 @@ function destroySession() {
     }
 }
 
+function destroyAllUserSessions($user_id) {
+    $database = new Database();
+    $db = $database->getConnection();
+    $search = '"user_id";s:' . strlen((string)$user_id) . ':"' . $user_id . '"';
+    $stmt = $db->prepare("DELETE FROM sessions WHERE data LIKE :uid");
+    $stmt->execute([':uid' => '%' . $search . '%']);
+    clearRememberMeToken($user_id);
+}
+
 function logout($redirect = '../member/login.php') {
+    if (isset($_SESSION['user_id'])) {
+        clearRememberMeToken($_SESSION['user_id']);
+        destroyAllUserSessions($_SESSION['user_id']);
+    }
     destroySession();
     // Validate redirect URL against allowlist
     $safe_redirects = ['/index.html', '/member/login.php', '/treasurer/login.php'];
