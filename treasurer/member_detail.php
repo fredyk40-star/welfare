@@ -106,11 +106,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         ];
                         sendReceiptEmail($member['email'], $receipt_data, $member['passport_photo'], $treasurer_email);
                     } catch (PDOException $e) {
-                        if (strpos($e->getMessage(), 'unique_member_billing') !== false) {
+                        $error_msg = $e->getMessage();
+                        if (strpos($error_msg, 'unique_member_billing') !== false) {
                             $error = 'Payment already recorded for this billing cycle.';
+                        } elseif (strpos($error_msg, 'foreign key') !== false || strpos($error_msg, 'Foreign key') !== false) {
+                            $error = 'Invalid member reference. Please try again.';
                         } else {
-                            $error = 'Transaction failed. Please try again.';
-                            error_log("Transaction Error: " . $e->getMessage());
+                            $error = 'Transaction failed: ' . $error_msg;
+                            error_log("Transaction Error: " . $error_msg);
                         }
                     }
                 }
@@ -279,12 +282,12 @@ if ($treasurer_row) {
                         <p class="mb-1"><strong>Phone:</strong> <?php echo htmlspecialchars($member['phone']); ?></p>
                         <p class="mb-0"><strong>Registered:</strong> <?php echo date('F j, Y', strtotime($member['created_at'])); ?></p>
                     </div>
-                    <div class="col-md-3 text-md-end mt-3 mt-md-0">
+<div class="col-md-3 text-md-end mt-3 mt-md-0">
                         <a href="/treasurer/members.php" class="btn btn-secondary mb-2">&larr; Back to Members</a>
                         <br>
-                        <a href="/treasurer/statement.php?member_id=<?php echo urlencode($member_id); ?>" target="_blank" class="btn btn-success mb-2">📄 Statement</a>
+                        <button class="btn btn-success mb-2" data-bs-toggle="modal" data-bs-target="#statementModal">���� Statement</button>
                         <br>
-                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#recordPaymentModal">💰 Record Payment</button>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#recordPaymentModal">���� Record Payment</button>
                     </div>
                 </div>
             </div>
@@ -636,6 +639,25 @@ if ($treasurer_row) {
     </div>
 </div>
 
+<!-- Statement Modal -->
+<div class="modal fade" id="statementModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Member Statement</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="statementContent">
+                <!-- Loaded dynamically -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="printStatement()">������� Print / Save as PDF</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script nonce="<?php echo CSP_NONCE; ?>">
 let currentReceiptNo = null;
 
@@ -656,6 +678,14 @@ document.addEventListener('DOMContentLoaded', function() {
     if (printReceiptBtn) {
         printReceiptBtn.addEventListener('click', printReceipt);
     }
+    
+    // Load statement when modal is shown
+    const statementModalEl = document.getElementById('statementModal');
+    if (statementModalEl) {
+        statementModalEl.addEventListener('show.bs.modal', function() {
+            loadStatement();
+        });
+    }
 });
 
 function viewReceipt(receiptNo) {
@@ -664,7 +694,8 @@ function viewReceipt(receiptNo) {
     const receiptModal = new bootstrap.Modal(document.getElementById('receiptModal'));
     receiptModal.show();
     
-    fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(receiptNo)}`)
+    // Pass member_id for treasurer access
+    fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(receiptNo)}&member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`)
         .then(response => response.text())
         .then(html => {
             document.getElementById('receiptContent').innerHTML = html;
@@ -677,8 +708,35 @@ function viewReceipt(receiptNo) {
 function printReceipt() {
     if (!currentReceiptNo) return;
     const printWindow = window.open(
-        `<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(currentReceiptNo)}`,
+        `<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(currentReceiptNo)}&member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`,
         'PrintReceipt',
+        'width=800,height=600'
+    );
+    if (printWindow) {
+        printWindow.onload = function() {
+            printWindow.print();
+        };
+    }
+}
+
+function loadStatement() {
+    const contentEl = document.getElementById('statementContent');
+    contentEl.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-success"></div></div>';
+    
+    fetch(`<?php echo APP_URL; ?>/treasurer/statement.php?member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`)
+        .then(response => response.text())
+        .then(html => {
+            contentEl.innerHTML = html;
+        })
+        .catch(() => {
+            contentEl.innerHTML = '<div class="alert alert-danger">Failed to load statement.</div>';
+        });
+}
+
+function printStatement() {
+    const printWindow = window.open(
+        `<?php echo APP_URL; ?>/treasurer/statement.php?member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`,
+        'PrintStatement',
         'width=800,height=600'
     );
     if (printWindow) {
@@ -690,3 +748,4 @@ function printReceipt() {
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+

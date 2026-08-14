@@ -133,12 +133,12 @@ $annual_target = $settings['annual_amount'];
                                                     data-action="pay">
                                                 Pay
                                             </button>
-                                            <button class="btn btn-sm btn-outline-success" 
-                                                    data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>" 
-                                                    data-member-name="<?php echo htmlspecialchars($member['full_name']); ?>"
-                                                    data-action="statement">
+<a href="/treasurer/member_detail.php?member_id=<?php echo urlencode($member['member_id']); ?>" 
+                                               class="btn btn-sm btn-outline-success"
+                                               data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>" 
+                                               data-member-name="<?php echo htmlspecialchars($member['full_name']); ?>">
                                                 Statement
-                                            </button>
+                                            </a>
                                         </div>
                                     </td>
                                 </tr>

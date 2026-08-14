@@ -114,25 +114,52 @@ switch ($action) {
         exit();
         
     case 'member_receipt':
-        if (!isMember()) {
+        if (!isLoggedIn()) {
             echo json_encode(['success' => false, 'message' => 'Unauthorized']);
             exit();
         }
         // NOTE: intentionally NOT requiring a CSRF token. Read-only GET that renders
-        // a receipt and is already authz-gated (member_id pinned to the session).
-        // Requiring CSRF here broke every member receipt View/Print/Download caller.
+        // a receipt and is already authz-gated. Requiring CSRF here broke every
+        // member receipt View/Print/Download caller.
         
         $receipt_no = cleanInput($_GET['receipt_no']);
+        $is_treasurer = isTreasurer();
         
-        $query = "SELECT t.*, m.full_name 
-                  FROM transactions t 
-                  JOIN members m ON t.member_id = m.member_id 
-                  WHERE t.receipt_no = :receipt_no AND t.member_id = :member_id";
-        $stmt = $db->prepare($query);
-        $stmt->execute([
-            ':receipt_no' => $receipt_no,
-            ':member_id' => $_SESSION['user_id']
-        ]);
+        // Build query based on user type
+        if ($is_treasurer) {
+            // Treasurer can view any member's receipt - allow optional member_id parameter
+            $target_member_id = cleanInput($_GET['member_id'] ?? '');
+            if ($target_member_id) {
+                $query = "SELECT t.*, m.full_name 
+                          FROM transactions t 
+                          JOIN members m ON t.member_id = m.member_id 
+                          WHERE t.receipt_no = :receipt_no AND t.member_id = :member_id";
+                $stmt = $db->prepare($query);
+                $stmt->execute([
+                    ':receipt_no' => $receipt_no,
+                    ':member_id' => $target_member_id
+                ]);
+            } else {
+                // No member_id provided - treasurer can view by receipt_no only
+                $query = "SELECT t.*, m.full_name 
+                          FROM transactions t 
+                          JOIN members m ON t.member_id = m.member_id 
+                          WHERE t.receipt_no = :receipt_no";
+                $stmt = $db->prepare($query);
+                $stmt->execute([':receipt_no' => $receipt_no]);
+            }
+        } else {
+            // Member can only view their own receipts
+            $query = "SELECT t.*, m.full_name 
+                      FROM transactions t 
+                      JOIN members m ON t.member_id = m.member_id 
+                      WHERE t.receipt_no = :receipt_no AND t.member_id = :member_id";
+            $stmt = $db->prepare($query);
+            $stmt->execute([
+                ':receipt_no' => $receipt_no,
+                ':member_id' => $_SESSION['user_id']
+            ]);
+        }
         $transaction = $stmt->fetch();
 
         if (!$transaction) {
