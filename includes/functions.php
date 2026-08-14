@@ -328,7 +328,7 @@ function sendEmail($to, $subject, $message, $cc = null) {
         }
     }
 
-    $smtp_host = getenv('SMTP_HOST') ?: 'smtp.resend.com';
+    $smtp_host = getenv('SMTP_HOST') ?: 'smtp.gmail.com';
     $smtp_port = (int)(getenv('SMTP_PORT') ?: 465);
     $smtp_username = getenv('SMTP_USERNAME') ?: 'resend';
     $smtp_password = getenv('SMTP_PASSWORD');
