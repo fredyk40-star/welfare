@@ -653,19 +653,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function viewReceipt(receiptNo) {
     currentReceiptNo = receiptNo;
-    // Show loading
     document.getElementById('receiptContent').innerHTML = '<div class="text-center"><div class="spinner-border text-primary"></div><p>Loading receipt...</p></div>';
-    
+
     const receiptModal = new bootstrap.Modal(document.getElementById('receiptModal'));
     receiptModal.show();
-    
-    // Fetch receipt content
+
     fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(receiptNo)}`)
         .then(response => response.text())
         .then(html => {
-            document.getElementById('receiptContent').innerHTML = html;
+            // The API returns a full HTML page; extract just the receipt content.
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const receiptBody = doc.querySelector('.receipt');
+            document.getElementById('receiptContent').innerHTML = receiptBody ? receiptBody.outerHTML : html;
         })
-        .catch(error => {
+        .catch(() => {
             document.getElementById('receiptContent').innerHTML = '<div class="alert alert-danger">Error loading receipt</div>';
         });
 }

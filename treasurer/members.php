@@ -234,57 +234,70 @@ function recordPayment(memberId, memberName) {
     window.location.href = `<?php echo APP_URL; ?>/treasurer/transactions.php?action=new&member_id=${memberId}&member_name=${encodeURIComponent(memberName)}`;
 }
 
-// Member status management (suspend / deactivate / delete / reactivate)
+// Single document-level delegation for all action buttons on this page.
 document.addEventListener('click', function (e) {
-    const btn = e.target.closest ? e.target.closest('[data-action="update_status"]') : null;
-    if (!btn) return;
-    e.preventDefault();
-    e.preventDefault();
+    // Status change buttons: suspend / deactivate / delete / reactivate
+    var statusBtn = e.target.closest ? e.target.closest('[data-action="update_status"]') : null;
+    if (statusBtn) {
+        e.preventDefault();
+        var memberId = statusBtn.getAttribute('data-member-id');
+        var newStatus = statusBtn.getAttribute('data-status');
+        var csrf = statusBtn.getAttribute('data-csrf');
+        if (!memberId || !newStatus) return;
 
-    const memberId = btn.getAttribute('data-member-id');
-    const newStatus = btn.getAttribute('data-status');
-    const csrf = btn.getAttribute('data-csrf');
-    if (!memberId || !newStatus) return;
+        var labels = {
+            'suspended': 'suspend',
+            'deactivated': 'deactivate',
+            'deleted': 'DELETE',
+            'active': 'reactivate'
+        };
+        var verb = labels[newStatus] || newStatus;
+        if (!confirm('Are you sure you want to ' + verb + ' member ' + memberId + '?')) {
+            return;
+        }
 
-    const labels = {
-        'suspended': 'suspend',
-        'deactivated': 'deactivate',
-        'deleted': 'DELETE',
-        'active': 'reactivate'
-    };
-    const verb = labels[newStatus] || newStatus;
-    if (!confirm(`Are you sure you want to ${verb} member ${memberId}?`)) {
+        var originalHtml = statusBtn.innerHTML;
+        statusBtn.disabled = true;
+        statusBtn.innerHTML = '...';
+
+        var fd = new FormData();
+        fd.append('csrf_token', csrf);
+        fd.append('member_id', memberId);
+        fd.append('status', newStatus);
+
+        fetch('<?php echo APP_URL; ?>/api/members.php?action=update_status', {
+            method: 'POST',
+            body: fd
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (d.success) {
+                location.reload();
+            } else {
+                statusBtn.disabled = false;
+                statusBtn.innerHTML = originalHtml;
+                alert(d.message || 'Action failed.');
+            }
+        })
+        .catch(function () {
+            statusBtn.disabled = false;
+            statusBtn.innerHTML = originalHtml;
+            alert('Network error. Please try again.');
+        });
         return;
     }
 
-    const originalHtml = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '...';
-
-    const fd = new FormData();
-    fd.append('csrf_token', csrf);
-    fd.append('member_id', memberId);
-    fd.append('status', newStatus);
-
-    fetch('<?php echo APP_URL; ?>/api/members.php?action=update_status', {
-        method: 'POST',
-        body: fd
-    })
-    .then(r => r.json())
-    .then(d => {
-        if (d.success) {
-            location.reload();
-        } else {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-            alert(d.message || 'Action failed.');
+    // Pay button: redirect to record-payment page for this member
+    var payBtn = e.target.closest ? e.target.closest('[data-action="pay"]') : null;
+    if (payBtn) {
+        e.preventDefault();
+        var memberId = payBtn.getAttribute('data-member-id');
+        var memberName = payBtn.getAttribute('data-member-name');
+        if (memberId && memberName && typeof recordPayment === 'function') {
+            recordPayment(memberId, memberName);
         }
-    })
-    .catch(() => {
-        btn.disabled = false;
-        btn.innerHTML = originalHtml;
-        alert('Network error. Please try again.');
-    });
+        return;
+    }
 });
 
 // Print members list
@@ -296,5 +309,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+</script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
