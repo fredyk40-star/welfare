@@ -373,7 +373,7 @@ function sendEmail($to, $subject, $message, $cc = null) {
         return true;
     }
 
-    $error_message = 'sendEmail API error (HTTP ' . $http_code . '): ' . $response;
+    $error_message = 'sendEmail API error (HTTP ' . $http_code . '): ' . $response . ' | from=' . $from . ' to=' . $to;
     if (strpos($response, 'domain is not verified') !== false) {
         $error_message .= ' | ACTION REQUIRED: Verify your sender domain in Resend dashboard (https://resend.com/domains)';
     } elseif (strpos($response, 'quota') !== false || strpos($response, 'rate limit') !== false) {
