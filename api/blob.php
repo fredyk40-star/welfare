@@ -6,18 +6,24 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/functions.php';
 
-header('Content-Type: application/json');
-
 $url = cleanInput($_GET['url'] ?? '');
 if (empty($url) || strpos($url, 'blob.vercel-storage.com') === false) {
     http_response_code(400);
+    header('Content-Type: application/json');
     echo json_encode(['error' => 'Invalid blob URL']);
     exit;
 }
 
-$token = getenv('BLOB_READ_WRITE_TOKEN');
+// Use the old token for legacy private-store blobs, new token for everything else.
+$token = '';
+if (strpos($url, '7qobswjucuhtuwh1.private.blob.vercel-storage.com') !== false) {
+    $token = getenv('OLD_BLOB_READ_WRITE_TOKEN');
+} else {
+    $token = getenv('BLOB_READ_WRITE_TOKEN');
+}
 if (empty($token)) {
     http_response_code(500);
+    header('Content-Type: application/json');
     echo json_encode(['error' => 'Blob not configured']);
     exit;
 }
@@ -40,6 +46,7 @@ curl_close($ch);
 
 if ($err || $http_code < 200 || $http_code >= 300) {
     http_response_code($http_code >= 200 && $http_code < 600 ? $http_code : 502);
+    header('Content-Type: application/json');
     echo json_encode(['error' => 'Blob fetch failed', 'details' => $err]);
     exit;
 }
