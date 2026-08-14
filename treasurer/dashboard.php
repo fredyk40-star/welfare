@@ -299,7 +299,7 @@ try {
                 <a href="transactions.php" class="btn btn-sm btn-light">View All</a>
             </div>
             <div class="card-body">
-                <div class="table-responsive">
+                <div class="table-scroll-wrapper">
                     <table class="table table-hover">
                         <thead>
                             <tr>
@@ -357,7 +357,7 @@ try {
                 <div id="defaultersEmpty" class="alert alert-success d-none">
                     All members have paid for this cycle! 🎉
                 </div>
-                <div class="table-responsive" id="defaultersTableWrap">
+                <div class="table-scroll-wrapper" id="defaultersTableWrap">
                     <table class="table table-hover" id="defaultersTable">
                         <thead>
                             <tr>

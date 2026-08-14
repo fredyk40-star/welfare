@@ -86,9 +86,6 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Validate session fingerprint after session_start so $_SESSION is available.
-validateSessionFingerprint();
-
 // Silent re-auth: if the server-side session was lost but a valid remember-me
 // cookie exists, restore the session instead of bouncing the user to login.
 autoLoginWithRememberMe();

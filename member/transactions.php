@@ -350,7 +350,7 @@ if ($monthly_target <= 0) $monthly_target = 1;
                         </p>
                     </div>
                 <?php else: ?>
-                    <div class="table-responsive">
+                    <div class="table-scroll-wrapper">
                         <table class="table table-hover">
                             <thead>
                                 <tr>

@@ -591,6 +591,33 @@ a:hover {
     -webkit-backdrop-filter: var(--glass-blur);
 }
 
+/* Scrollable Table Container */
+.table-scroll-wrapper {
+    position: relative;
+    max-height: 65vh;
+    overflow-y: auto;
+    overflow-x: auto;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.02);
+    z-index: 1;
+}
+.table-scroll-wrapper .table {
+    margin-bottom: 0;
+    min-width: 800px;
+}
+.table-scroll-wrapper thead th {
+    position: sticky;
+    top: 0;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(8px);
+    z-index: 2;
+}
+.table-scroll-wrapper .table td,
+.table-scroll-wrapper .table th {
+    white-space: nowrap;
+}
+
 /* Tables */
 .table {
     color: var(--text-secondary);

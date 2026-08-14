@@ -490,7 +490,7 @@ $recent_logs = $logs_stmt->fetchAll();
                 <h5 class="mb-0">Recent Activity Log</h5>
             </div>
             <div class="card-body">
-                <div class="table-responsive">
+                <div class="table-scroll-wrapper">
                     <table class="table table-hover">
                         <thead>
                             <tr>

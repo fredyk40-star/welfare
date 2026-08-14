@@ -35,6 +35,16 @@ require_once __DIR__ . '/functions.php';
         <img src="<?php echo APP_URL; ?>/assets/images/logo.png" alt="GYF Welfare" class="app-splash-logo">
         <p class="app-splash-text">GYF Welfare</p>
     </div>
+    <script nonce="<?php echo CSP_NONCE; ?>">
+    // If the splash was already shown in this session, hide it immediately so
+    // in-app navigation does not re-show the splash overlay.
+    if (sessionStorage.getItem('gyfSplashShown') === '1') {
+        var splash = document.getElementById('appSplash');
+        if (splash) {
+            splash.style.display = 'none';
+        }
+    }
+    </script>
 
     <!-- Global page transition loader -->
     <div id="pageLoader" class="page-loader" aria-hidden="true">

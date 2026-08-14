@@ -689,7 +689,7 @@ if (!empty($late_payers)):
                     </div>
                 </form>
                 
-                <div class="table-responsive">
+                <div class="table-scroll-wrapper">
                     <table class="table table-hover">
                         <thead>
                             <tr>
@@ -1176,7 +1176,7 @@ function loadMemberHistory(memberId) {
         .then(r => r.json()).then(d => {
             if (!d.success || !d.history.length) { container.innerHTML = '<div class="alert alert-info">No payment history found.</div>'; return; }
             const esc = (s) => { if (!s && s !== '') return ''; return String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c] || c)); };
-            let html = '<h6>Payment History for ' + esc(memberId) + '</h6><div class="table-responsive"><table class="table table-sm table-hover"><thead><tr><th>Receipt</th><th>Amount</th><th>Method</th><th>Period</th><th>Date</th></tr></thead><tbody>';
+            let html = '<h6>Payment History for ' + esc(memberId) + '</h6><div class="table-scroll-wrapper"><table class="table table-sm table-hover"><thead><tr><th>Receipt</th><th>Amount</th><th>Method</th><th>Period</th><th>Date</th></tr></thead><tbody>';
             d.history.forEach(h => {
                 html += '<tr><td>' + esc(h.receipt_no) + '</td><td class="text-success">GH₵ ' + parseFloat(h.amount).toFixed(2) + '</td><td>' + esc(h.payment_method) + '</td><td>' + esc(h.billing_period || 'N/A') + '</td><td>' + esc(h.transaction_date) + '</td></tr>';
             });
@@ -1655,3 +1655,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 }
 </style>
+<?php require_once __DIR__ . '/../includes/footer.php'; ?>

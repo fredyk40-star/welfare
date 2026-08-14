@@ -125,6 +125,8 @@ document.addEventListener('DOMContentLoaded', function () {
     var splash = document.getElementById('appSplash');
     if (splash) {
         splash.classList.add('is-hidden');
+        // Mark splash as shown for this session so subsequent navigations skip it.
+        try { sessionStorage.setItem('gyfSplashShown', '1'); } catch (e) {}
         // Clean up after transition so it doesn't intercept clicks
         setTimeout(function () { splash.remove(); }, 400);
     }

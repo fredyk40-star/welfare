@@ -70,7 +70,7 @@ $annual_target = $settings['annual_amount'];
                 </div>
             </div>
             <div class="card-body">
-                <div class="table-responsive">
+                <div class="table-scroll-wrapper">
                     <table class="table table-hover" id="membersTable">
                         <thead>
                             <tr>

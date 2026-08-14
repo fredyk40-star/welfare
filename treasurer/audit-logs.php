@@ -209,7 +209,7 @@ $uniqueActions = $actionsStmt->fetchAll(PDO::FETCH_COLUMN);
         <?php if (empty($logs)): ?>
             <div class="alert alert-info">No audit logs found.</div>
         <?php else: ?>
-            <div class="table-responsive">
+            <div class="table-scroll-wrapper">
                 <table class="table table-striped table-hover">
                     <thead>
                         <tr>

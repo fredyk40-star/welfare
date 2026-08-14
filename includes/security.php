@@ -253,3 +253,8 @@ function logout($redirect = '../member/login.php') {
     exit();
 }
 
+// Validate session fingerprint after all includes so $_SESSION is available.
+if (session_status() === PHP_SESSION_ACTIVE && function_exists('validateSessionFingerprint')) {
+    validateSessionFingerprint();
+}
+
