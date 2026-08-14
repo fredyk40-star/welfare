@@ -732,6 +732,273 @@ function formatBillingPeriod($month, $year) {
     return date('F Y', mktime(0, 0, 0, $month, 1, $year));
 }
 
+/**
+ * Normalize phone number to a canonical digit string (no +, no spaces).
+ *
+ * Strategy:
+ *  - Strip everything that is not a digit.
+ *  - A leading "00" international prefix is dropped (00XXX -> XXX).
+ *  - A Ghana local number (10 digits starting with 0, e.g. 0595360050) is
+ *    rewritten to its international form 233595360050.
+ *  - Otherwise the digits are returned as-is (already international, e.g. 233...,
+ *    27..., 1..., etc.).
+ *
+ * Input : 0595360050 | +233 595360050 | 233595360050 | 00233595360050
+ * Output: 233595360050
+ */
+function normalizePhoneNumber($phone) {
+    $phone = trim((string) $phone);
+    if ($phone === '') {
+        return '';
+    }
+
+    $digits = preg_replace('/\D/', '', $phone);
+    if ($digits === '') {
+        return '';
+    }
+
+    // Drop a leading "00" international prefix (00XXX -> XXX)
+    if (substr($digits, 0, 2) === '00') {
+        $digits = substr($digits, 2);
+    }
+
+    // Ghana local format: 0xxxxxxxxxx (10 digits) -> 233xxxxxxxxxx
+    if (substr($digits, 0, 1) === '0' && strlen($digits) === 10) {
+        return '233' . substr($digits, 1);
+    }
+
+    return $digits;
+}
+
+/**
+ * Build the set of phone-like search variants for a free-text search term so a
+ * member can be found whether the treasurer types the local number
+ * (0595360050), the international number (233595360050), or just the local
+ * digits (595360050). Returns an empty array when the term is not phone-like
+ * (contains letters), so name/ID matching can take over.
+ *
+ * @return array<int,string> list of bare digit strings to match against
+ */
+function getPhoneSearchVariants($term) {
+    $term = trim((string) $term);
+    if ($term === '' || !preg_match('/^[+\d\s\-().]+$/', $term)) {
+        return [];
+    }
+
+    $digits = preg_replace('/\D/', '', $term);
+    if (strlen($digits) < 7) {
+        return [];
+    }
+
+    $variants = [$digits];
+
+    // Ghana local (0 + 9 digits) -> also try the 233 international form
+    if (substr($digits, 0, 1) === '0' && strlen($digits) === 10) {
+        $variants[] = '233' . substr($digits, 1);
+    }
+    // International 233 form -> also try the leading-0 local form + bare local
+    if (substr($digits, 0, 3) === '233') {
+        $local = substr($digits, 3);
+        $variants[] = $local;
+        $variants[] = '0' . $local;
+    }
+
+    // De-duplicate while preserving order
+    return array_values(array_unique($variants));
+}
+
+/**
+ * Get member status display badge
+ */
+function getMemberStatusBadge($status) {
+    $badges = [
+        'active' => '<span class="badge bg-success">Active</span>',
+        'suspended' => '<span class="badge bg-warning text-dark">Suspended</span>',
+        'deactivated' => '<span class="badge bg-secondary">Deactivated</span>',
+        'deleted' => '<span class="badge bg-danger">Deleted</span>',
+    ];
+    return $badges[$status] ?? '<span class="badge bg-light text-dark">Unknown</span>';
+}
+
+/**
+ * Check if member can login (active only)
+ */
+function canMemberLogin($status) {
+    return $status === 'active';
+}
+
+/**
+ * Get member status actions for treasurer
+ */
+function getMemberStatusActions($member_id, $current_status, $current_user_id, $deleted_at = '', $deletion_count = 0) {
+    $actions = [];
+    $csrf = generateCsrfToken();
+    $id = htmlspecialchars($member_id);
+    
+    switch ($current_status) {
+        case 'active':
+            $actions[] = '<button class="btn btn-sm btn-warning" data-action="update_status" data-status="suspended" data-member-id="' . $id . '" data-csrf="' . $csrf . '">Suspend</button>';
+            $actions[] = '<button class="btn btn-sm btn-secondary" data-action="update_status" data-status="deactivated" data-member-id="' . $id . '" data-csrf="' . $csrf . '">Deactivate</button>';
+            $actions[] = '<button class="btn btn-sm btn-danger" data-action="update_status" data-status="deleted" data-member-id="' . $id . '" data-csrf="' . $csrf . '">Delete</button>';
+            break;
+        case 'suspended':
+            $actions[] = '<button class="btn btn-sm btn-success" data-action="update_status" data-status="active" data-member-id="' . $id . '" data-csrf="' . $csrf . '">Unsuspend</button>';
+            $actions[] = '<button class="btn btn-sm btn-secondary" data-action="update_status" data-status="deactivated" data-member-id="' . $id . '" data-csrf="' . $csrf . '">Deactivate</button>';
+            $actions[] = '<button class="btn btn-sm btn-danger" data-action="update_status" data-status="deleted" data-member-id="' . $id . '" data-csrf="' . $csrf . '">Delete</button>';
+            break;
+        case 'deactivated':
+            $actions[] = '<button class="btn btn-sm btn-success" data-action="update_status" data-status="active" data-member-id="' . $id . '" data-csrf="' . $csrf . '">Activate</button>';
+            $actions[] = '<button class="btn btn-sm btn-danger" data-action="update_status" data-status="deleted" data-member-id="' . $id . '" data-csrf="' . $csrf . '">Delete</button>';
+            break;
+        case 'deleted':
+            if ($deletion_count >= 3) {
+                $actions[] = '<span class="text-danger small fw-bold" title="Permanently banned after 3 deletions">Banned (permanent)</span>';
+            } else {
+                $actions[] = '<button class="btn btn-sm btn-success" data-action="update_status" data-status="active" data-member-id="' . $id . '" data-csrf="' . $csrf . '">Reactivate</button>';
+                $actions[] = '<span class="text-muted small">Deleted ' . ($deleted_at ? htmlspecialchars(date('M j, Y', strtotime($deleted_at))) : '') . '</span>';
+            }
+            break;
+    }
+    return implode(' ', $actions);
+}
+
+/**
+ * Check if member has been deleted 3+ times
+ */
+function isMemberPermanentlyBanned($member_id, $db) {
+    $stmt = $db->prepare("SELECT deletion_count FROM members WHERE member_id = :mid");
+    $stmt->execute([':mid' => $member_id]);
+    $row = $stmt->fetch();
+    return $row && $row['deletion_count'] >= 3;
+}
+
+/**
+ * Update member status
+ */
+function updateMemberStatus($db, $member_id, $new_status, $treasurer_id) {
+    $allowed_statuses = ['active', 'suspended', 'deactivated', 'deleted'];
+    if (!in_array($new_status, $allowed_statuses)) {
+        return ['success' => false, 'message' => 'Invalid status'];
+    }
+    
+    $now = date('Y-m-d H:i:s');
+    $updates = [];
+    $params = [':mid' => $member_id, ':treasurer_id' => $treasurer_id, ':now' => $now];
+    
+    $updates[] = "status = :new_status";
+    $params[':new_status'] = $new_status;
+    
+    if ($new_status === 'suspended') {
+        $updates[] = "suspended_at = :now";
+        $updates[] = "suspended_by = :treasurer_id";
+    } elseif ($new_status === 'deleted') {
+        $updates[] = "deleted_at = :now";
+        $updates[] = "deleted_by = :treasurer_id";
+        $updates[] = "deletion_count = deletion_count + 1";
+    } elseif ($new_status === 'active') {
+        // Clear suspension/deactivation timestamps when reactivating
+        $updates[] = "suspended_at = NULL";
+        $updates[] = "suspended_by = NULL";
+    } elseif ($new_status === 'deactivated') {
+        // Keep track of deactivation
+    }
+    
+    $query = "UPDATE members SET " . implode(', ', $updates) . " WHERE member_id = :mid";
+    $stmt = $db->prepare($query);
+    $result = $stmt->execute($params);
+    
+    if ($result) {
+        $action_names = [
+            'active' => 'Activated',
+            'suspended' => 'Suspended',
+            'deactivated' => 'Deactivated',
+            'deleted' => 'Deleted',
+        ];
+        logAudit($treasurer_id, $action_names[$new_status] . " member {$member_id}");
+        return ['success' => true, 'message' => 'Member status updated'];
+    }
+    return ['success' => false, 'message' => 'Failed to update status'];
+}
+
+/**
+ * Delete member completely (admin only)
+ */
+function deleteMemberPermanently($db, $member_id, $treasurer_id) {
+    // Delete transactions first (foreign key constraint)
+    $stmt = $db->prepare("DELETE FROM transactions WHERE member_id = :mid");
+    $stmt->execute([':mid' => $member_id]);
+    
+    // Delete member
+    $stmt = $db->prepare("DELETE FROM members WHERE member_id = :mid AND member_id != :treasurer_id");
+    $stmt->execute([':mid' => $member_id, ':treasurer_id' => $treasurer_id]);
+    
+    if ($stmt->rowCount() > 0) {
+        logAudit($treasurer_id, "Permanently deleted member {$member_id}");
+        return ['success' => true, 'message' => 'Member permanently deleted'];
+    }
+    return ['success' => false, 'message' => 'Member not found or cannot be deleted'];
+}
+
+/**
+ * Database reset - danger zone
+ */
+function resetDatabase($db, $treasurer_id, $options = []) {
+    $results = [];
+    
+    $default_options = [
+        'transactions' => true,
+        'audit_logs' => true,
+        'password_resets' => true,
+        'members' => true, // exclude treasurer
+    ];
+    
+    $options = array_merge($default_options, $options);
+    
+    $db->beginTransaction();
+    try {
+        if ($options['transactions']) {
+            $db->exec("DELETE FROM transactions");
+            $results[] = 'All transactions deleted';
+        }
+        
+        if ($options['audit_logs']) {
+            $db->exec("DELETE FROM audit_logs");
+            $results[] = 'Audit logs cleared';
+        }
+        
+        if ($options['password_resets']) {
+            $db->exec("DELETE FROM password_resets");
+            $results[] = 'Password resets cleared';
+        }
+        
+        if ($options['members']) {
+            // Avoid orphaned transactions: always remove non-treasurer
+            // transactions before removing the members themselves.
+            if (!$options['transactions']) {
+                $stmt = $db->prepare("DELETE FROM transactions WHERE member_id != :treasurer_id");
+                $stmt->execute([':treasurer_id' => $treasurer_id]);
+            }
+            // Keep treasurer account
+            $stmt = $db->prepare("DELETE FROM members WHERE member_id != :treasurer_id");
+            $stmt->execute([':treasurer_id' => $treasurer_id]);
+            $results[] = 'Non-treasurer members deleted (' . $stmt->rowCount() . ')';
+        }
+        
+        // Reset settings to defaults
+        $stmt = $db->prepare("UPDATE settings SET annual_amount = 240.00, monthly_amount = 20.00 WHERE id = 1");
+        $stmt->execute();
+        $results[] = 'Settings reset to defaults';
+        
+        $db->commit();
+        logAudit($treasurer_id, "Database reset performed: " . implode(', ', $results));
+        return ['success' => true, 'message' => 'Database reset completed', 'details' => $results];
+    } catch (Exception $e) {
+        $db->rollBack();
+        error_log("Database reset error: " . $e->getMessage());
+        return ['success' => false, 'message' => 'Reset failed: ' . $e->getMessage()];
+    }
+}
+
 function renderReceipt($transaction, $show_billing_period = true, $show_member_id = true) {
     $member_label = htmlspecialchars($transaction['full_name']);
     if ($show_member_id && !empty($transaction['member_id'])) {

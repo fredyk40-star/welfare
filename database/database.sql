@@ -102,3 +102,15 @@ INSERT IGNORE INTO members (member_id, full_name, email, password, two_fa_secret
 VALUES ('GYF-ADMIN', 'System Treasurer', 'treasurer@gyf.org',
         '$2y$10$8V7QfRQVB2qbQppPFropUeTAjAAP5229QVd7Of6i1Zd8w/Zt7y/vO',
         NULL, '1990-01-01', 'Male', '0000000000', 'Admin Address', 'Emergency Contact', 'Relationship', '0000000000');
+
+
+-- Member status and deletion tracking
+ALTER TABLE members 
+ADD COLUMN IF NOT EXISTS status ENUM('active','suspended','deactivated','deleted') NOT NULL DEFAULT 'active' AFTER phone,
+ADD COLUMN IF NOT EXISTS deletion_count INT NOT NULL DEFAULT 0 AFTER status,
+ADD COLUMN IF NOT EXISTS suspended_at TIMESTAMP NULL AFTER deletion_count,
+ADD COLUMN IF NOT EXISTS suspended_by VARCHAR(20) NULL AFTER suspended_at,
+ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL AFTER suspended_by,
+ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(20) NULL AFTER deleted_at,
+ADD INDEX IF NOT EXISTS idx_members_status (status);
+

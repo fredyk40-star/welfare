@@ -13,20 +13,32 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1' && isset($_GET['search'])) {
     $db = $database->getConnection();
     
     $search_term = cleanInput($_GET['search']);
+    $search_param = "%{$search_term}%";
+    $phone_where = "phone LIKE :search3";
+    $phone_params = [];
+    $variants = getPhoneSearchVariants($search_term);
+    if ($variants) {
+        $clauses = [];
+        foreach ($variants as $i => $v) {
+            $key = ":phone_d{$i}";
+            $clauses[] = "REPLACE(REPLACE(REPLACE(phone,' ',''),'+',''),'-','') LIKE {$key}";
+            $phone_params[$key] = "%{$v}%";
+        }
+        $phone_where = "(" . implode(' OR ', $clauses) . ")";
+    }
     $search_query = "SELECT member_id, full_name, passport_photo, phone, email 
                     FROM members 
-                    WHERE (member_id LIKE :search1 OR full_name LIKE :search2 OR phone LIKE :search3)
+                    WHERE (member_id LIKE :search1 OR full_name LIKE :search2 OR {$phone_where})
                     AND member_id != :treasurer_id
                     ORDER BY full_name ASC
                     LIMIT 20";
     $search_stmt = $db->prepare($search_query);
-    $search_param = "%{$search_term}%";
-    $search_stmt->execute([
+    $search_stmt->execute(array_merge([
         ':search1' => $search_param,
         ':search2' => $search_param,
         ':search3' => $search_param,
         ':treasurer_id' => TREASURER_MEMBER_ID
-    ]);
+    ], $phone_params));
     $search_results = $search_stmt->fetchAll();
     
     if (empty($search_results)) {
@@ -106,20 +118,32 @@ try {
     $search_term = '';
     if (isset($_GET['search'])) {
         $search_term = cleanInput($_GET['search']);
+        $search_param = "%{$search_term}%";
+        $phone_where = "phone LIKE :search3";
+        $phone_params = [];
+        $variants = getPhoneSearchVariants($search_term);
+        if ($variants) {
+            $clauses = [];
+            foreach ($variants as $i => $v) {
+                $key = ":phone_p{$i}";
+                $clauses[] = "REPLACE(REPLACE(REPLACE(phone,' ',''),'+',''),'-','') LIKE {$key}";
+                $phone_params[$key] = "%{$v}%";
+            }
+            $phone_where = "(" . implode(' OR ', $clauses) . ")";
+        }
         $search_query = "SELECT member_id, full_name, passport_photo, phone, email 
                         FROM members 
-                        WHERE (member_id LIKE :search1 OR full_name LIKE :search2 OR phone LIKE :search3)
+                        WHERE (member_id LIKE :search1 OR full_name LIKE :search2 OR {$phone_where})
                         AND member_id != :treasurer_id
                         ORDER BY full_name ASC
                         LIMIT 20";
         $search_stmt = $db->prepare($search_query);
-        $search_param = "%{$search_term}%";
-        $search_stmt->execute([
+        $search_stmt->execute(array_merge([
             ':search1' => $search_param,
             ':search2' => $search_param,
             ':search3' => $search_param,
             ':treasurer_id' => TREASURER_MEMBER_ID
-        ]);
+        ], $phone_params));
         $search_results = $search_stmt->fetchAll();
     }
 

@@ -44,7 +44,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([':member_id' => $member_id]);
                 
                 if ($member = $stmt->fetch()) {
-                    if (password_verify($password, $member['password'])) {
+                    // Status guard: only 'active' members may log in. The 'status'
+                    // column may be absent on older schemas, so fall back to active.
+                    $member_status = $member['status'] ?? 'active';
+                    if ($member_status !== 'active') {
+                        $status_label = ucfirst($member_status);
+                        $error = "This account is {$status_label}. Please contact the treasurer.";
+                        logAudit($member['member_id'], "Blocked login - account {$member_status}");
+                    } elseif (password_verify($password, $member['password'])) {
                         // Check if 2FA is enabled
                         if (!empty($member['two_fa_secret'])) {
                             session_regenerate_id(true);

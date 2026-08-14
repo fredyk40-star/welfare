@@ -28,19 +28,35 @@ switch ($action) {
         }
         
         $search_term = cleanInput($_GET['term']);
+        $search_param = "%{$search_term}%";
+
+        // Build phone-matching clauses that tolerate country-code differences
+        // (e.g. 0595360050 vs 233595360050 vs +233 595360050).
+        $phone_where = "phone LIKE :search3";
+        $phone_params = [];
+        $variants = getPhoneSearchVariants($search_term);
+        if ($variants) {
+            $clauses = [];
+            foreach ($variants as $i => $v) {
+                $key = ":phone_v{$i}";
+                $clauses[] = "REPLACE(REPLACE(REPLACE(phone,' ',''),'+',''),'-','') LIKE {$key}";
+                $phone_params[$key] = "%{$v}%";
+            }
+            $phone_where = "(" . implode(' OR ', $clauses) . ")";
+        }
+
         $query = "SELECT member_id, full_name, passport_photo, phone, email 
                   FROM members 
-                  WHERE (member_id LIKE :search1 OR full_name LIKE :search2 OR phone LIKE :search3)
+                  WHERE (member_id LIKE :search1 OR full_name LIKE :search2 OR {$phone_where})
                   AND member_id != :treasurer_id
                   LIMIT 10";
         $stmt = $db->prepare($query);
-        $search_param = "%{$search_term}%";
-        $stmt->execute([
+        $stmt->execute(array_merge([
             ':search1' => $search_param,
             ':search2' => $search_param,
             ':search3' => $search_param,
             ':treasurer_id' => TREASURER_MEMBER_ID
-        ]);
+        ], $phone_params));
         $members = $stmt->fetchAll();
         foreach ($members as &$m) {
             if (!empty($m['passport_photo'])) {
@@ -118,18 +134,29 @@ switch ($action) {
         // Optional search term (reuse same matching as search)
         $term = cleanInput($_GET['term'] ?? '');
         if ($term !== '') {
+            $phone_where = "phone LIKE :s3";
+            $phone_params = [];
+            $variants = getPhoneSearchVariants($term);
+            if ($variants) {
+                $clauses = [];
+                foreach ($variants as $i => $v) {
+                    $key = ":phone_l{$i}";
+                    $clauses[] = "REPLACE(REPLACE(REPLACE(phone,' ',''),'+',''),'-','') LIKE {$key}";
+                    $phone_params[$key] = "%{$v}%";
+                }
+                $phone_where = "(" . implode(' OR ', $clauses) . ")";
+            }
             $query = "SELECT member_id, full_name, passport_photo, phone
                       FROM members
-                      WHERE (member_id LIKE :s1 OR full_name LIKE :s2 OR phone LIKE :s3)
+                      WHERE (member_id LIKE :s1 OR full_name LIKE :s2 OR {$phone_where})
                       AND member_id != :treasurer_id
                       ORDER BY full_name ASC
                       LIMIT 200";
             $stmt = $db->prepare($query);
-            $sp = "%{$term}%";
-            $stmt->execute([
-                ':s1' => $sp, ':s2' => $sp, ':s3' => $sp,
+            $stmt->execute(array_merge([
+                ':s1' => "%{$term}%", ':s2' => "%{$term}%", ':s3' => "%{$term}%",
                 ':treasurer_id' => TREASURER_MEMBER_ID
-            ]);
+            ], $phone_params));
         } else {
             $query = "SELECT member_id, full_name, passport_photo, phone
                       FROM members
@@ -391,6 +418,89 @@ switch ($action) {
             'errors' => $errors,
             'generated' => $generated
         ]);
+        break;
+
+    case 'update_status':
+        if (!isTreasurer()) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit();
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+            exit();
+        }
+        if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+            exit();
+        }
+        if (!checkRateLimit($ip_address, 20, 300, '%status%')) {
+            echo json_encode(['success' => false, 'message' => 'Rate limit exceeded. Please try again later.']);
+            exit();
+        }
+
+        $member_id = cleanInput($_POST['member_id'] ?? '');
+        $new_status = cleanInput($_POST['status'] ?? '');
+
+        if ($member_id === '' || !in_array($new_status, ['active', 'suspended', 'deactivated', 'deleted'], true)) {
+            echo json_encode(['success' => false, 'message' => 'Invalid member or status.']);
+            exit();
+        }
+        if ($member_id === TREASURER_MEMBER_ID) {
+            echo json_encode(['success' => false, 'message' => 'The treasurer account cannot be modified.']);
+            exit();
+        }
+
+        // Guard against deleting a member who is already permanently banned (3 strikes).
+        if ($new_status === 'deleted' && isMemberPermanentlyBanned($member_id, $db)) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'This member is permanently banned and cannot be deleted again (3 deletions reached).',
+                'banned' => true
+            ]);
+            exit();
+        }
+
+        $result = updateMemberStatus($db, $member_id, $new_status, $_SESSION['user_id']);
+        echo json_encode($result);
+        break;
+
+    case 'reset_database':
+        if (!isTreasurer()) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit();
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+            exit();
+        }
+        if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+            exit();
+        }
+        if (!checkRateLimit($ip_address, 3, 3600, '%reset%')) {
+            echo json_encode(['success' => false, 'message' => 'Rate limit exceeded. Please try again later.']);
+            exit();
+        }
+        // Require an explicit typed confirmation to prevent accidental wipes.
+        if (cleanInput($_POST['confirm'] ?? '') !== 'RESET') {
+            echo json_encode(['success' => false, 'message' => 'Type RESET to confirm the database reset.']);
+            exit();
+        }
+
+        $options = [
+            'transactions' => isset($_POST['reset_transactions']),
+            'audit_logs' => isset($_POST['reset_audit_logs']),
+            'password_resets' => isset($_POST['reset_password_resets']),
+            'members' => isset($_POST['reset_members']),
+        ];
+        if (!array_filter($options)) {
+            echo json_encode(['success' => false, 'message' => 'Select at least one table to reset.']);
+            exit();
+        }
+
+        // Never reset the treasurer account or system settings row.
+        $result = resetDatabase($db, TREASURER_MEMBER_ID, $options);
+        echo json_encode($result);
         break;
 
     default:

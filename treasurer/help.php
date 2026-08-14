@@ -109,6 +109,7 @@ require_once __DIR__ . '/../includes/header.php';
                     <li><strong>Full Name:</strong> Member's full name.</li>
                     <li><strong>Phone:</strong> Contact phone number.</li>
                     <li><strong>Email:</strong> Email address.</li>
+                    <li><strong>Status:</strong> A colored badge showing the member's current state: <span class="text-success">Active</span>, <span class="text-warning">Suspended</span>, <span class="text-secondary">Deactivated</span>, or <span class="text-danger">Deleted</span>. A "Deletions: n/3" hint is shown for members who have been deleted before.</li>
                     <li><strong>Monthly Status:</strong> Whether the member has paid for the current month (Paid/Pending badge).</li>
                     <li><strong>Yearly Progress:</strong> A progress bar showing how much of the annual target the member has contributed.</li>
                 </ul>
@@ -120,6 +121,16 @@ require_once __DIR__ . '/../includes/header.php';
                     <li><strong>Statement:</strong> Click "Statement" to view the member's contribution statement with full transaction history.</li>
                 </ul>
                 
+                <h6>Member Status Management:</h6>
+                <p>Below each member's action buttons there is a <strong>Status</strong> row with buttons to manage the member's account state. Only the treasurer can change a member's status:</p>
+                <ul>
+                    <li><strong>Suspend:</strong> Temporarily blocks the member from logging in (e.g. pending investigation). They can be unsuspended later.</li>
+                    <li><strong>Deactivate:</strong> Disables the member's login without deleting their record or history. Can be reactivated at any time.</li>
+                    <li><strong>Delete:</strong> Soft-deletes the member. Their row stays in the database (with a "Deleted" badge) so you can reactivate them. Each deletion increments a counter.</li>
+                    <li><strong>3-Strike Ban:</strong> If a member is deleted <strong>3 times</strong>, they become <span class="text-danger">permanently banned</span> and can no longer be deleted again, nor re-register with the same email/phone. The banned state is shown as "Banned (permanent)".</li>
+                </ul>
+                <p>Suspended, deactivated, and deleted members <strong>cannot log in</strong>. Reactivating (or unsuspending) restores login access immediately.</p>
+
                 <h6>Import CSV:</h6>
                 <p>You can bulk-import members from a CSV file. The CSV should have these columns:</p>
                 <ul>
@@ -281,6 +292,18 @@ require_once __DIR__ . '/../includes/header.php';
                 <div class="alert alert-info">
                     <strong>💡 Tip:</strong> Update these settings at the beginning of each year or whenever the contribution amounts change. All progress calculations and charts will automatically update.
                 </div>
+
+                <h6>⚠️ Danger Zone — Reset Database:</h6>
+                <p>At the bottom of the Settings page there is a red <strong>Danger Zone</strong> card for resetting data. Use it with extreme care.</p>
+                <ul>
+                    <li><strong>Select what to reset:</strong> Transactions, Audit Logs, Password Reset Tokens, and/or All Members (except the treasurer account).</li>
+                    <li><strong>Confirm:</strong> Type the word <code>RESET</code> into the confirmation box, then click "Reset Selected Data".</li>
+                    <li>The treasurer account and the welfare settings (annual/monthly targets) are <strong>always preserved</strong>.</li>
+                    <li>Resetting members also removes their transactions to avoid orphaned records.</li>
+                </ul>
+                <div class="alert alert-danger">
+                    <strong>🛑 This action is permanent and cannot be undone.</strong> Export your data first if you might need it.
+                </div>
             </div>
         </div>
     </div>
@@ -422,6 +445,25 @@ require_once __DIR__ . '/../includes/header.php';
                             <li>Type in the search box at the top (Member ID, Phone, or Name)</li>
                             <li>Results appear instantly with photos</li>
                             <li>Click a result to open the Member Detail page</li>
+                        </ol>
+                        <p class="small text-muted mb-0">Phone search is country-code tolerant: searching <code>0595360050</code>, <code>233595360050</code>, or <code>+233 595360050</code> all find the same member. Only members who exist in the database are returned.</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <h6>How to suspend or delete a member:</h6>
+                        <ol>
+                            <li>Go to <a href="<?php echo APP_URL; ?>/treasurer/members.php">Members</a></li>
+                            <li>Find the member and use the <strong>Status</strong> buttons (Suspend / Deactivate / Delete / Reactivate)</li>
+                            <li>Confirm the popup — the change applies immediately</li>
+                            <li>Suspended/deactivated/deleted members cannot log in</li>
+                        </ol>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <h6>How to reset the database:</h6>
+                        <ol>
+                            <li>Go to <a href="<?php echo APP_URL; ?>/treasurer/settings.php">Settings</a></li>
+                            <li>Scroll to the red <strong>Danger Zone</strong> card</li>
+                            <li>Tick the tables to clear, type <code>RESET</code>, and confirm</li>
+                            <li>The treasurer account and settings are always kept</li>
                         </ol>
                     </div>
                 </div>

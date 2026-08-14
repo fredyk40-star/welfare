@@ -54,20 +54,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $db = $database->getConnection();
         
         // Check if email already exists
-        $check_query = "SELECT id FROM members WHERE LOWER(email) = LOWER(:email)";
+        $check_query = "SELECT id, status, deletion_count FROM members WHERE LOWER(email) = LOWER(:email)";
         $check_stmt = $db->prepare($check_query);
         $check_stmt->execute([':email' => $email]);
-        
-        if ($check_stmt->rowCount() > 0) {
-            $error = 'Email already registered.';
+        $existing_email = $check_stmt->fetch();
+
+        if ($existing_email) {
+            if (($existing_email['status'] ?? '') === 'deleted' && (int)($existing_email['deletion_count'] ?? 0) >= 3) {
+                $error = 'This email is permanently banned from registration. Contact the treasurer.';
+            } else {
+                $error = 'Email already registered.';
+            }
         } else {
             // Check if phone already exists
-            $check_phone_query = "SELECT id FROM members WHERE phone = :phone";
+            $check_phone_query = "SELECT id, status, deletion_count FROM members WHERE phone = :phone";
             $check_phone_stmt = $db->prepare($check_phone_query);
             $check_phone_stmt->execute([':phone' => $phone]);
+            $existing_phone = $check_phone_stmt->fetch();
 
-            if ($check_phone_stmt->rowCount() > 0) {
-                $error = 'Phone number already registered.';
+            if ($existing_phone) {
+                if (($existing_phone['status'] ?? '') === 'deleted' && (int)($existing_phone['deletion_count'] ?? 0) >= 3) {
+                    $error = 'This phone number is permanently banned from registration. Contact the treasurer.';
+                } else {
+                    $error = 'Phone number already registered.';
+                }
             } else {
             // Handle photo upload
             $photo_filename = null;

@@ -78,6 +78,7 @@ $annual_target = $settings['annual_amount'];
                                 <th>Full Name</th>
                                 <th>Phone</th>
                                 <th>Email</th>
+                                <th>Status</th>
                                 <th>Monthly Status</th>
                                 <th>Yearly Progress</th>
                                 <th>Actions</th>
@@ -101,6 +102,12 @@ $annual_target = $settings['annual_amount'];
                                     <td><?php echo htmlspecialchars($member['phone']); ?></td>
                                     <td><?php echo htmlspecialchars($member['email']); ?></td>
                                     <td>
+                                        <?php echo getMemberStatusBadge($member['status'] ?? 'active'); ?>
+                                        <?php if (($member['deletion_count'] ?? 0) > 0): ?>
+                                            <br><small class="text-muted">Deletions: <?php echo (int)$member['deletion_count']; ?>/3</small>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
                                         <?php if ($member['paid_this_month'] > 0): ?>
                                             <span class="badge bg-success">Paid</span>
                                         <?php else: ?>
@@ -122,25 +129,34 @@ $annual_target = $settings['annual_amount'];
                                         <small>GH₵ <?php echo number_format($member['yearly_total'], 2); ?> / GH₵ <?php echo number_format($annual_target, 2); ?></small>
                                     </td>
                                     <td>
-                                        <div class="btn-group">
-                                            <a href="/treasurer/member_detail.php?member_id=<?php echo urlencode($member['member_id']); ?>" 
-                                               class="btn btn-sm btn-info">
-                                                 View
-                                            </a>
-                                            <button class="btn btn-sm btn-primary" 
-                                                    data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>" 
-                                                    data-member-name="<?php echo htmlspecialchars($member['full_name']); ?>" 
-                                                    data-action="pay">
-                                                Pay
-                                            </button>
+                                         <div class="btn-group">
+                                             <a href="/treasurer/member_detail.php?member_id=<?php echo urlencode($member['member_id']); ?>" 
+                                                class="btn btn-sm btn-info">
+                                                  View
+                                             </a>
+                                             <button class="btn btn-sm btn-primary" 
+                                                     data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>" 
+                                                     data-member-name="<?php echo htmlspecialchars($member['full_name']); ?>" 
+                                                     data-action="pay">
+                                                 Pay
+                                             </button>
 <a href="/treasurer/member_detail.php?member_id=<?php echo urlencode($member['member_id']); ?>" 
-                                               class="btn btn-sm btn-outline-success"
-                                               data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>" 
-                                               data-member-name="<?php echo htmlspecialchars($member['full_name']); ?>">
-                                                Statement
-                                            </a>
-                                        </div>
-                                    </td>
+                                                class="btn btn-sm btn-outline-success"
+                                                data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>" 
+                                                data-member-name="<?php echo htmlspecialchars($member['full_name']); ?>">
+                                                 Statement
+                                             </a>
+                                         </div>
+                                         <div class="mt-2 d-flex flex-wrap gap-1 status-actions" data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>">
+                                             <?php echo getMemberStatusActions(
+                                                 $member['member_id'],
+                                                 $member['status'] ?? 'active',
+                                                 TREASURER_MEMBER_ID,
+                                                 $member['deleted_at'] ?? '',
+                                                 (int)($member['deletion_count'] ?? 0)
+                                             ); ?>
+                                         </div>
+                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -204,5 +220,57 @@ $annual_target = $settings['annual_amount'];
 function recordPayment(memberId, memberName) {
     window.location.href = `<?php echo APP_URL; ?>/treasurer/transactions.php?action=new&member_id=${memberId}&member_name=${encodeURIComponent(memberName)}`;
 }
+
+// Member status management (suspend / deactivate / delete / reactivate)
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest ? e.target.closest('[data-action="update_status"]') : null;
+    if (!btn) return;
+    e.preventDefault();
+
+    const memberId = btn.getAttribute('data-member-id');
+    const newStatus = btn.getAttribute('data-status');
+    const csrf = btn.getAttribute('data-csrf');
+    if (!memberId || !newStatus) return;
+
+    const labels = {
+        'suspended': 'suspend',
+        'deactivated': 'deactivate',
+        'deleted': 'DELETE',
+        'active': 'reactivate'
+    };
+    const verb = labels[newStatus] || newStatus;
+    if (!confirm(`Are you sure you want to ${verb} member ${memberId}?`)) {
+        return;
+    }
+
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '...';
+
+    const fd = new FormData();
+    fd.append('csrf_token', csrf);
+    fd.append('member_id', memberId);
+    fd.append('status', newStatus);
+
+    fetch('<?php echo APP_URL; ?>/api/members.php?action=update_status', {
+        method: 'POST',
+        body: fd
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success) {
+            location.reload();
+        } else {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            alert(d.message || 'Action failed.');
+        }
+    })
+    .catch(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        alert('Network error. Please try again.');
+    });
+});
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
