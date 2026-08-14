@@ -985,15 +985,23 @@ var clearBtn = document.getElementById('clearMemberBtn');
     }
 });
 
-function showReceipt(transactionId, printMode = false) {
-    const modalEl = document.getElementById('receiptModal');
-    const contentEl = document.getElementById('receiptContent');
-    
-    // Clean up any stuck backdrops BEFORE opening new modal
+// Prevent stacked-backdrop / locked-screen bugs when opening modals.
+function _cleanupModals() {
+    // Hide any open Bootstrap modal instances and remove stacked backdrops.
+    document.querySelectorAll('.modal.show').forEach(function(el) {
+        try { bootstrap.Modal.getInstance(el)?.hide(); } catch (e) { el.classList.remove('show'); }
+    });
     document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
     document.body.classList.remove('modal-open');
     document.body.style.overflow = '';
     document.body.style.paddingRight = '';
+}
+
+function showReceipt(transactionId, printMode = false) {
+    const modalEl = document.getElementById('receiptModal');
+    const contentEl = document.getElementById('receiptContent');
+    
+    _cleanupModals();
     
     contentEl.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
     
@@ -1128,6 +1136,7 @@ document.addEventListener('keydown', function(e) {
 
 // Transaction details modal
 function showTxDetail(transactionId) {
+    _cleanupModals();
     const modalEl = document.getElementById('txDetailModal');
     const body = document.getElementById('txDetailBody');
     if (!modalEl || !body) return;
@@ -1203,6 +1212,7 @@ document.getElementById('bulkExportCsv')?.addEventListener('click', function() {
 
 // Void transaction
 function voidTransaction(transactionId) {
+    _cleanupModals();
     document.getElementById('voidTransactionId').value = transactionId;
     document.getElementById('voidReason').value = '';
     new bootstrap.Modal(document.getElementById('voidModal')).show();
@@ -1225,6 +1235,7 @@ function confirmVoid() {
 
 // Undo last transaction
 function undoLastTransaction() {
+    _cleanupModals();
     fetch(APP_BASE + '/api/transactions.php?action=get_last')
         .then(r => r.json()).then(d => {
             if (!d.success || !d.transaction) { showToast('No recent transaction found.', 'warning'); return; }
@@ -1250,9 +1261,8 @@ function confirmUndo() {
 }
 
 // Open payment modal
-// `preserve` keeps the currently-selected member (used when a member is picked
-// from the Browse Members modal so their selection survives opening the form).
 function openPaymentModal(preserve) {
+    _cleanupModals();
     // Reset form
     const form = document.getElementById('paymentForm');
     const memberIdEl = document.getElementById('selectedMemberId');
@@ -1290,6 +1300,7 @@ function openPaymentModal(preserve) {
 
 // Batch payment modal
 function openBatchModal() {
+    _cleanupModals();
     document.getElementById('batchAmount').value = '';
     document.getElementById('batchMethod').value = '';
     document.getElementById('batchMonth').value = '';
@@ -1308,6 +1319,7 @@ document.getElementById('batchAllActive').addEventListener('change', function() 
 
 // Browse Members modal
 function openBrowseMembers() {
+    _cleanupModals();
     const modal = new bootstrap.Modal(document.getElementById('browseMembersModal'));
     modal.show();
     loadBrowseMembers('');
