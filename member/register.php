@@ -29,11 +29,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $consent = isset($_POST['consent']);
     
     $email = strtolower($email);
-    $phone = $country_code . ' ' . $phone_raw;   // combined value used for validation + storage
+    $phone_digits = preg_replace('/\D/', '', $phone_raw);
+    $phone = $country_code . ' ' . $phone_digits;   // combined value used for validation + storage
     
     // Validate inputs
     $allowed_country_codes = ['+233', '+1', '+44', '+27', '+234', '+254', '+255', '+256', '+265', '+260', '+263', '+258', '+257', '+250', '+221', '+223', '+226', '+229', '+224', '+225', '+220', '+232', '+231'];
-    if (empty($full_name) || empty($email) || empty($phone) || empty($password)) {
+    if (empty($full_name) || empty($email) || empty($phone_digits) || empty($password)) {
         $error = 'Please fill in all required fields.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = 'Invalid email format.';
@@ -41,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Invalid country code selected.';
     } elseif (strpos($phone_raw, '+') !== false) {
         $error = 'Please enter the phone number without the country code.';
-    } elseif (!preg_match('/^[0-9]{7,15}$/', $phone_raw)) {
+    } elseif (strlen($phone_digits) < 7 || strlen($phone_digits) > 15) {
         $error = 'Phone number must be 7 to 15 digits.';
     } elseif ($password !== $confirm_password) {
         $error = 'Passwords do not match.';

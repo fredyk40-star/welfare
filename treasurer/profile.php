@@ -116,14 +116,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $country_code = cleanInput($_POST['country_code'] ?? '+233');
             $phone_raw = cleanInput($_POST['phone'] ?? '');
 
-            if (strpos($phone_raw, '+') !== false) {
+            // Normalize: allow spaces/dashes/parentheses in input, but validate digits only
+            $phone_digits = preg_replace('/\D/', '', $phone_raw);
+
+            if ($phone_raw === '') {
+                $error = 'Please enter a phone number.';
+            } elseif (strpos($phone_raw, '+') !== false) {
                 $error = 'Please enter the phone number without the country code.';
-            } elseif (!preg_match('/^[0-9]{7,15}$/', $phone_raw)) {
+            } elseif (strlen($phone_digits) < 7 || strlen($phone_digits) > 15) {
                 $error = 'Phone number must be 7 to 15 digits.';
             } elseif (!in_array($country_code, ['+233','+1','+44','+27','+234','+254','+255','+256','+265','+260','+263','+258','+257','+250','+221','+223','+226','+229','+224','+225','+220','+232','+231'], true)) {
                 $error = 'Invalid country code selected.';
             } else {
-                $new_phone = $country_code . ' ' . $phone_raw;
+                $new_phone = $country_code . ' ' . $phone_digits;
                 $check_query = "SELECT id FROM members WHERE phone = :phone AND member_id != :member_id";
                 $check_stmt = $db->prepare($check_query);
                 $check_stmt->execute([':phone' => $new_phone, ':member_id' => $treasurer_id]);
