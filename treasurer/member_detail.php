@@ -107,9 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                         sendReceiptEmail($member['email'], $receipt_data, $member['passport_photo'], $treasurer_email);
                     } catch (PDOException $e) {
                         $error_msg = $e->getMessage();
-                        if (strpos($error_msg, 'unique_member_billing') !== false) {
-                            $error = 'Payment already recorded for this billing cycle.';
-                        } elseif (strpos($error_msg, 'foreign key') !== false || strpos($error_msg, 'Foreign key') !== false) {
+                        if (strpos($error_msg, 'foreign key') !== false || strpos($error_msg, 'Foreign key') !== false) {
                             $error = 'Invalid member reference. Please try again.';
                         } else {
                             $error = 'Transaction failed: ' . $error_msg;
@@ -643,16 +641,16 @@ if ($treasurer_row) {
 <div class="modal fade" id="statementModal" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title">Member Statement</h5>
+            <div class="modal-header" style="background:#0f172a; color:#fff;">
+                <h5 class="modal-title">📄 Member Statement</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body" id="statementContent">
+            <div class="modal-body p-0" id="statementContent" style="background:#f4f6f9;">
                 <!-- Loaded dynamically -->
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" onclick="printStatement()">������� Print / Save as PDF</button>
+                <button type="button" class="btn btn-primary" onclick="printStatement()">🖨️ Print / Save as PDF</button>
             </div>
         </div>
     </div>
@@ -722,8 +720,8 @@ function printReceipt(receiptNo) {
 function loadStatement() {
     const contentEl = document.getElementById('statementContent');
     contentEl.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-success"></div></div>';
-    
-    fetch(`<?php echo APP_URL; ?>/treasurer/statement.php?member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`)
+
+    fetch(`<?php echo APP_URL; ?>/treasurer/statement.php?embed=1&member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`)
         .then(response => response.text())
         .then(html => {
             contentEl.innerHTML = html;
@@ -735,9 +733,9 @@ function loadStatement() {
 
 function printStatement() {
     const printWindow = window.open(
-        `<?php echo APP_URL; ?>/treasurer/statement.php?member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`,
+        `<?php echo APP_URL; ?>/treasurer/statement.php?embed=1&member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`,
         'PrintStatement',
-        'width=800,height=600'
+        'width=1000,height=800'
     );
     if (printWindow) {
         printWindow.onload = function() {

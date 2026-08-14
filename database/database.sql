@@ -53,7 +53,6 @@ CREATE TABLE IF NOT EXISTS transactions (
     status VARCHAR(20) DEFAULT 'active',
     transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY receipt_no (receipt_no),
-    UNIQUE KEY unique_billing (member_id, billing_cycle_month, billing_cycle_year),
     KEY idx_member_transactions (member_id),
     KEY idx_treasurer_transactions (treasurer_id),
     KEY idx_billing_cycle (billing_cycle_year, billing_cycle_month),

@@ -13,41 +13,6 @@ $db = $database->getConnection();
 $action = cleanInput($_GET['action'] ?? $_POST['action'] ?? '');
 
 switch ($action) {
-    case 'check_duplicate':
-        if (!isTreasurer()) {
-            echo json_encode(['success' => false, 'message' => 'Access denied']);
-            exit();
-        }
-        if (!checkRateLimit($_SESSION['user_id'] ?? getClientIp(), 10, 60, '%check_duplicate%')) {
-            echo json_encode(['success' => false, 'message' => 'Too many requests. Please try again later.']);
-            exit();
-        }
-        $member_id = cleanInput($_GET['member_id'] ?? '');
-        $month = (int) ($_GET['month'] ?? 0);
-        $year = (int) ($_GET['year'] ?? 0);
-
-        if (!$member_id || !$month || !$year) {
-            echo json_encode(['success' => false, 'message' => 'Missing required parameters', 'exists' => false]);
-            exit();
-        }
-
-        $stmt = $db->prepare("SELECT receipt_no FROM transactions WHERE member_id = :mid AND billing_cycle_month = :m AND billing_cycle_year = :y AND status != 'void' LIMIT 1");
-        $stmt->execute([':mid' => $member_id, ':m' => $month, ':y' => $year]);
-        $row = $stmt->fetch();
-
-        if ($row) {
-            echo json_encode([
-                'success' => true,
-                'exists' => true,
-                'receipt_no' => $row['receipt_no'],
-                'month_name' => date('F', mktime(0, 0, 0, $month, 1)),
-                'year' => $year
-            ]);
-        } else {
-            echo json_encode(['success' => true, 'exists' => false]);
-        }
-        exit();
-
     case 'details':
         if (!isLoggedIn()) {
             echo json_encode(['success' => false, 'message' => 'Unauthorized']);
@@ -448,9 +413,6 @@ switch ($action) {
                 $member_check = $db->prepare("SELECT id FROM members WHERE member_id = :mid");
                 $member_check->execute([':mid' => $mid]);
                 if (!$member_check->fetch()) { $fail_count++; $failures[] = ['member_id' => $mid, 'reason' => 'Member ID not found']; continue; }
-                $dup_check = $db->prepare("SELECT id FROM transactions WHERE member_id = :mid AND billing_cycle_month = :m AND billing_cycle_year = :y AND status != 'void'");
-                $dup_check->execute([':mid' => $mid, ':m' => $billing_month, ':y' => $billing_year]);
-                if ($dup_check->fetch()) { $fail_count++; $failures[] = ['member_id' => $mid, 'reason' => 'Already recorded for this billing cycle']; continue; }
                 
                 // Annual limit check per member
                 $yearly_stmt = $db->prepare("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE member_id = :mid AND billing_cycle_year = :y AND status != 'void'");

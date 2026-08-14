@@ -191,7 +191,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <ul>
                     <li>Check if the member exists</li>
                     <li>Validate the amount and date</li>
-                    <li>Prevent duplicate payments for the same billing cycle</li>
+                    <li>Allow multiple payments for the same billing cycle (welfare partial payments supported)</li>
                     <li>Enforce the annual contribution limit</li>
                     <li>Generate a unique receipt number</li>
                     <li>Send a receipt email to the member (and CC you)</li>
@@ -235,7 +235,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <p>Click "Record Payment" to save. The system will:</p>
                 <ul>
                     <li>Validate all inputs</li>
-                    <li>Check for duplicate billing cycles</li>
+                    <li>Allow multiple payments per billing cycle (welfare partial payments)</li>
                     <li>Enforce annual limits</li>
                     <li>Generate a receipt</li>
                     <li>Send a receipt email to the member (and CC you)</li>

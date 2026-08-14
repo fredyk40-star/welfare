@@ -7,12 +7,11 @@ if (!isLoggedIn()) {
     redirectTo('/member/login.php');
 }
 
-require_once __DIR__ . '/../includes/header.php';
-
 $database = new Database();
 $db = $database->getConnection();
 
 $member_id = cleanInput($_GET['member_id'] ?? '');
+$embed = !empty($_GET['embed']);
 
 // Authorization: treasurer can view any, member can only view own
 if (!isTreasurer() && $_SESSION['user_id'] !== $member_id) {
@@ -30,7 +29,7 @@ try {
     $stmt = $db->prepare("SELECT * FROM members WHERE member_id = :mid");
     $stmt->execute([':mid' => $member_id]);
     $member = $stmt->fetch();
-    
+
     if (!$member) {
         throw new Exception('Member not found');
     }
@@ -52,8 +51,179 @@ try {
     $member = null;
     error_log('Statement error: ' . $e->getMessage());
 }
-?>
 
+if ($embed) {
+    // Embedded statement (no navbar/footer) for modal / print
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Statement - <?php echo htmlspecialchars($member['full_name'] ?? ''); ?></title>
+        <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
+        <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/css/style.css">
+        <style>
+            body { background: #f4f6f9; }
+            .statement-wrap { max-width: 900px; margin: 24px auto; }
+            .statement-header {
+                background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+                color: #fff;
+                border-radius: 12px;
+                padding: 24px;
+            }
+            .statement-header .org-name { font-size: 0.85rem; opacity: 0.8; letter-spacing: 0.08em; text-transform: uppercase; }
+            .statement-header h1 { font-size: 1.6rem; font-weight: 700; margin: 6px 0 0; }
+            .stat-card {
+                border: 0;
+                border-radius: 12px;
+                box-shadow: 0 2px 8px rgba(15,23,42,0.06);
+                transition: transform .15s ease, box-shadow .15s ease;
+            }
+            .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(15,23,42,0.1); }
+            .member-avatar {
+                width: 72px; height: 72px; border-radius: 50%; object-fit: cover;
+                border: 3px solid #e2e8f0; background: #fff;
+            }
+            .avatar-placeholder {
+                width: 72px; height: 72px; border-radius: 50%;
+                background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                color: #fff; font-size: 1.6rem; font-weight: 700;
+                display: inline-flex; align-items: center; justify-content: center;
+                border: 3px solid #e2e8f0;
+            }
+            .tx-table thead th { background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
+            .tx-table tbody tr:hover { background: #f8fafc; }
+            .badge-void { background: #fee2e2; color: #991b1b; }
+            .badge-active { background: #d1fae5; color: #065f46; }
+            @media print {
+                body { background: #fff; }
+                .statement-wrap { margin: 0; max-width: 100%; }
+                .no-print { display: none !important; }
+                .statement-header { background: #0f172a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="statement-wrap">
+            <?php if (!$member): ?>
+                <div class="alert alert-danger">Member not found or access denied.</div>
+            <?php else: ?>
+                <div class="statement-header mb-3 d-flex align-items-center gap-3">
+                    <div class="org-name"><?php echo htmlspecialchars(APP_NAME); ?></div>
+                    <div class="flex-grow-1">
+                        <h1 class="mb-0">Contribution Statement</h1>
+                        <div class="opacity-75">Generated on <?php echo date('F j, Y g:i A'); ?></div>
+                    </div>
+                    <div class="no-print text-end">
+                        <button onclick="window.print()" class="btn btn-light btn-sm">🖨️ Print / Save PDF</button>
+                    </div>
+                </div>
+
+                <div class="card stat-card mb-3">
+                    <div class="card-body d-flex align-items-center gap-3">
+                        <?php if ($member['passport_photo']): ?>
+                            <img src="<?php echo displayPhotoUrl($member['passport_photo']); ?>" class="member-avatar" alt="Photo">
+                        <?php else: ?>
+                            <div class="avatar-placeholder"><?php echo strtoupper(substr($member['full_name'], 0, 1)); ?></div>
+                        <?php endif; ?>
+                        <div>
+                            <h5 class="mb-1"><?php echo htmlspecialchars($member['full_name']); ?></h5>
+                            <p class="text-muted mb-0 small"><?php echo htmlspecialchars($member['member_id']); ?> · <?php echo htmlspecialchars($member['email']); ?> · <?php echo htmlspecialchars($member['phone']); ?></p>
+                            <p class="text-muted mb-0 small">Member since <?php echo date('F j, Y', strtotime($member['created_at'])); ?></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <div class="card stat-card h-100">
+                            <div class="card-body text-center">
+                                <div class="text-muted small text-uppercase tracking-wide mb-1">Yearly Paid</div>
+                                <div class="fw-bold" style="font-size:1.35rem;">GH₵ <?php echo number_format($ytd_paid, 2); ?></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card stat-card h-100">
+                            <div class="card-body text-center">
+                                <div class="text-muted small text-uppercase tracking-wide mb-1">Annual Target</div>
+                                <div class="fw-bold" style="font-size:1.35rem;">GH₵ <?php echo number_format($annual_target, 2); ?></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card stat-card h-100">
+                            <div class="card-body text-center">
+                                <div class="text-muted small text-uppercase tracking-wide mb-1">Transactions</div>
+                                <div class="fw-bold" style="font-size:1.35rem;"><?php echo count($transactions); ?></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card stat-card mb-3">
+                    <div class="card-header bg-white border-0 py-3">
+                        <h5 class="mb-0">Transaction History</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive tx-table">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Receipt No</th>
+                                        <th class="text-end">Amount</th>
+                                        <th>Method</th>
+                                        <th>Billing Period</th>
+                                        <th>Date</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($transactions)): ?>
+                                        <tr><td colspan="7" class="text-center text-muted py-4">No transactions found</td></tr>
+                                    <?php else: ?>
+                                        <?php foreach ($transactions as $i => $tx): ?>
+                                            <tr>
+                                                <td class="text-muted"><?php echo $i + 1; ?></td>
+                                                <td><code><?php echo htmlspecialchars($tx['receipt_no']); ?></code></td>
+                                                <td class="text-end fw-bold text-success">GH₵ <?php echo number_format($tx['amount'], 2); ?></td>
+                                                <td><?php echo htmlspecialchars($tx['payment_method']); ?></td>
+                                                <td>
+                                                    <?php echo $tx['billing_cycle_month'] ? htmlspecialchars(formatBillingPeriod($tx['billing_cycle_month'], $tx['billing_cycle_year'] ?? date('Y'))) : htmlspecialchars($tx['billing_cycle_year']); ?>
+                                                </td>
+                                                <td><?php echo date('M j, Y', strtotime($tx['transaction_date'])); ?></td>
+                                                <td>
+                                                    <span class="badge bg-<?php echo $tx['status'] === 'void' ? 'danger' : 'success'; ?>">
+                                                        <?php echo ucfirst($tx['status']); ?>
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card stat-card">
+                    <div class="card-body text-center">
+                        <small class="text-muted"><?php echo htmlspecialchars(APP_NAME); ?> · Generated on <?php echo date('F j, Y g:i A'); ?></small>
+                    </div>
+                </div>
+            <?php endif; ?>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit();
+}
+
+// Full page mode (standalone statement)
+require_once __DIR__ . '/../includes/header.php';
+?>
 <div class="row">
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -94,12 +264,12 @@ try {
             <h5 class="mb-0">Annual Contribution Progress (<?php echo date('Y'); ?>)</h5>
         </div>
         <div class="card-body">
-            <?php 
+            <?php
             $pct = $annual_target > 0 ? min(100, round(($ytd_paid / $annual_target) * 100)) : 0;
             $bar_color = $pct >= 100 ? 'success' : ($pct >= 50 ? 'warning' : 'danger');
             ?>
             <div class="progress" style="height: 30px;">
-                <div class="progress-bar bg-<?php echo $bar_color; ?>" role="progressbar" 
+                <div class="progress-bar bg-<?php echo $bar_color; ?>" role="progressbar"
                      style="width: <?php echo $pct; ?>%"><?php echo $pct; ?>%</div>
             </div>
             <div class="mt-2 text-center">
@@ -136,7 +306,7 @@ try {
                                     <td class="text-success fw-bold">GH₵ <?php echo number_format($tx['amount'], 2); ?></td>
                                     <td><?php echo htmlspecialchars($tx['payment_method']); ?></td>
                                     <td>
-                                        <?php 
+                                        <?php
                                         if ($tx['billing_cycle_month']) {
                                             echo date('F Y', mktime(0, 0, 0, $tx['billing_cycle_month'], 1, $tx['billing_cycle_year']));
                                         } else {

@@ -114,12 +114,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                                 'date' => $transaction_datetime
                             ];
                         } catch (PDOException $e) {
-                            if (strpos($e->getMessage(), 'unique_member_billing') !== false) {
-                                $error = 'Payment already recorded for this billing cycle.';
-                            } else {
-                                $error = 'Transaction failed. Please try again.';
-                                error_log("Transaction Error: " . $e->getMessage());
-                            }
+                            $error = 'Transaction failed. Please try again.';
+                            error_log("Transaction Error: " . $e->getMessage());
                         }
                     }
                     // Send receipt email outside try-catch so email failure doesn't roll back the payment
@@ -461,7 +457,6 @@ function sortIcon($field, $currentField, $currentDir) {
                             </div>
                             <small id="memberProgressText" class="text-muted"></small>
                         </div>
-                        <div id="dupWarning" class="mt-2" style="display:none;"></div>
                     </div>
                     
                     <button type="submit" class="btn btn-primary w-100" id="submitPayment" disabled>
@@ -923,7 +918,6 @@ function clearMemberSelection() {
     const dotEl = document.getElementById('selectedDot');
     const infoEl = document.getElementById('selectedMemberInfo');
     const progressEl = document.getElementById('memberProgress');
-    const dupWarningEl = document.getElementById('dupWarning');
     if (idEl) idEl.value = '';
     if (nameEl) { nameEl.textContent = 'None'; nameEl.classList.remove('is-selected'); }
     if (dotEl) dotEl.style.display = 'none';
@@ -939,7 +933,6 @@ function clearMemberSelection() {
     if (searchEl) searchEl.value = '';
     if (submitEl) submitEl.disabled = true;
     if (progressEl) progressEl.style.display = 'none';
-    if (dupWarningEl) dupWarningEl.style.display = 'none';
 }
 
 function validateForm() {
@@ -1089,13 +1082,11 @@ document.getElementById('memberSearch').addEventListener('input', function () {
     _searchTimer = setTimeout(searchMembers, 350);
 });
 
-// Member annual progress + duplicate-cycle warning
+// Member annual progress
 function refreshMemberContext(memberId) {
     if (!memberId) {
         const progressEl = document.getElementById('memberProgress');
-        const dupWarningEl = document.getElementById('dupWarning');
         if (progressEl) progressEl.style.display = 'none';
-        if (dupWarningEl) dupWarningEl.style.display = 'none';
         return;
     }
     const month = document.getElementById('billing_month').value;
@@ -1118,37 +1109,7 @@ function refreshMemberContext(memberId) {
                 'GH₵ ' + ytd.toFixed(2) + ' of GH₵ ' + target.toFixed(2) + ' (' + pct + '%)';
         })
         .catch(() => {});
-    checkDuplicate(memberId, month, year);
 }
-
-function checkDuplicate(memberId, month, year) {
-    const box = document.getElementById('dupWarning');
-    if (!box) return;
-    if (!memberId || !month || !year) { box.style.display = 'none'; return; }
-    fetch(APP_BASE + '/api/transactions.php?action=check_duplicate&member_id=' +
-        encodeURIComponent(memberId) + '&month=' + encodeURIComponent(month) + '&year=' + encodeURIComponent(year))
-        .then(r => r.json())
-        .then(d => {
-            if (d.success && d.exists) {
-                box.style.display = 'block';
-                box.className = 'mt-2 alert alert-warning py-2 mb-0';
-                box.innerHTML = '⚠️ This member already has a payment recorded for ' +
-                    d.month_name + ' ' + d.year + ' (Receipt ' + d.receipt_no + '). Recording again will be blocked.';
-            } else {
-                box.style.display = 'none';
-            }
-        })
-        .catch(() => { box.style.display = 'none'; });
-}
-
-['billing_month', 'billing_year'].forEach(function (id) {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener('change', function () {
-        checkDuplicate(document.getElementById('selectedMemberId').value,
-            document.getElementById('billing_month').value,
-            document.getElementById('billing_year').value);
-    });
-});
 
 const _origSelect = selectMember;
 selectMember = function (memberId, memberName) {
@@ -1301,7 +1262,6 @@ function openPaymentModal(preserve) {
     const submitEl = document.getElementById('submitPayment');
     const resultsEl = document.getElementById('searchResults');
     const progressEl = document.getElementById('memberProgress');
-    const dupWarningEl = document.getElementById('dupWarning');
     const searchEl = document.getElementById('memberSearch');
     
     if (form) form.reset();
@@ -1317,7 +1277,6 @@ function openPaymentModal(preserve) {
     }
     if (resultsEl) resultsEl.innerHTML = '';
     if (progressEl) progressEl.style.display = 'none';
-    if (dupWarningEl) dupWarningEl.style.display = 'none';
     
     // Show modal
     const modal = new bootstrap.Modal(document.getElementById('paymentModal'));
