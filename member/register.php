@@ -344,14 +344,17 @@ $emergency_phone = $emergency_phone ?? '';
         }
     }
 
-    document.getElementById('registrationForm').addEventListener('submit', function(e) {
-        const newPwd = document.getElementById('password');
-        const confirmPwd = document.getElementById('confirm_password');
-        if (newPwd && confirmPwd && newPwd.value !== confirmPwd.value) {
-            e.preventDefault();
-            alert('Passwords do not match.');
-        }
-    });
+    const form = document.getElementById('registrationForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const newPwd = document.getElementById('password');
+            const confirmPwd = document.getElementById('confirm_password');
+            if (newPwd && confirmPwd && newPwd.value !== confirmPwd.value) {
+                e.preventDefault();
+                alert('Passwords do not match.');
+            }
+        });
+    }
     
     document.querySelectorAll('[data-toggle-password]').forEach(function(btn) {
         btn.addEventListener('click', function() {
