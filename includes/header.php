@@ -13,6 +13,9 @@ require_once __DIR__ . '/security.php';
     
     <!-- PWA: manifest + theme -->
     <link rel="manifest" href="<?php echo APP_URL; ?>/manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="GYF Welfare">
     
     <!-- Bootstrap 5 CSS (Local) -->
     <link rel="stylesheet" href="<?php echo APP_URL; ?>/assets/bootstrap/css/bootstrap.min.css">
@@ -27,6 +30,20 @@ require_once __DIR__ . '/security.php';
     <script src="<?php echo APP_URL; ?>/assets/js/header-common.js"></script>
 </head>
 <body>
+    <!-- App splash (PWA startup flash guard) -->
+    <div id="appSplash" aria-hidden="true">
+        <img src="<?php echo APP_URL; ?>/assets/images/logo.png" alt="GYF Welfare" class="app-splash-logo">
+        <p class="app-splash-text">GYF Welfare</p>
+    </div>
+
+    <!-- Global page transition loader -->
+    <div id="pageLoader" class="page-loader" aria-hidden="true">
+        <div class="page-loader-backdrop"></div>
+        <div class="page-loader-content">
+            <div class="spinner-border text-primary" role="status" aria-label="Loading"></div>
+            <p class="page-loader-text mt-3">Loading...</p>
+        </div>
+    </div>
     <!-- Background slideshow (global, initialized in footer.php) -->
     <div class="bg-slideshow" id="bgSlideshow"></div>
     <!-- Navigation Bar -->

@@ -89,6 +89,68 @@ body {
     overflow-x: hidden;
 }
 
+/* PWA startup splash: prevents white flash while the app initializes */
+#appSplash {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #1976d2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+#appSplash.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+.app-splash-logo {
+    width: 96px;
+    height: 96px;
+    object-fit: contain;
+    filter: drop-shadow(0 6px 12px rgba(0,0,0,0.25));
+}
+.app-splash-text {
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.1rem;
+    margin: 0;
+    letter-spacing: 0.04em;
+}
+
+/* Global page transition loader */
+.page-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 10500;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+.page-loader.is-active {
+    display: flex;
+}
+.page-loader-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+.page-loader-content {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+}
+.page-loader-text {
+    margin: 0;
+    font-weight: 600;
+    color: #1976d2;
+}
+
 /* Background slideshow layer */
 .bg-slideshow {
     position: fixed;

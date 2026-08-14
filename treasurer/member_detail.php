@@ -125,14 +125,15 @@ $current_year = date('Y');
 $settings = getYearlyTarget($db, $current_year);
 $annual_target = $settings['annual_amount'];
 $monthly_target = $settings['monthly_amount'];
-if ($annual_target <= 0) $annual_target = 1;
-if ($monthly_target <= 0) $monthly_target = 1;
 
 // Yearly total for current year
 $current_year = date('Y');
 $year_stats = getMemberYearStats($db, $member_id, $current_year);
 $yearly_total = $year_stats['paid'];
 $annual_target = $year_stats['target'];
+$monthly_target = $year_stats['monthly_target'];
+if ($annual_target <= 0) $annual_target = 1;
+if ($monthly_target <= 0) $monthly_target = 1;
 $monthly_target = $year_stats['monthly_target'];
 $year_debt = $year_stats['debt'];
 
