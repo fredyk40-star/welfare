@@ -88,7 +88,7 @@ $annual_target = $settings['annual_amount'];
                         </thead>
                         <tbody>
                             <?php foreach ($members as $member): ?>
-                                <tr>
+                                <tr data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>">
                                     <td>
                                         <?php if ($member['passport_photo']): ?>
                                             <img src="<?php echo displayPhotoUrl($member['passport_photo']); ?>"
