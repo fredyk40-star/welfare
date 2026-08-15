@@ -646,8 +646,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     const printPageBtn = document.getElementById('printBtn');
-    if (printPageBtn) {
-        printPageBtn.addEventListener('click', window.print);
+    if (printBtn) {
+        printPageBtn.addEventListener('click', function () { window.print(); });
     }
 });
 

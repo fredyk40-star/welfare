@@ -265,7 +265,7 @@ switch ($action) {
                 
                 var printBtn = document.getElementById('printBtn');
                 if (printBtn) {
-                    printBtn.addEventListener('click', window.print);
+                    printBtn.addEventListener('click', function () { window.print(); });
                 }
             </script>
         </body>

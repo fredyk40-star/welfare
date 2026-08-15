@@ -1530,7 +1530,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (pdfForm) { pdfForm.action = APP_BASE + '/api/transactions.php?action=export_pdf'; }
 
     var printBtn = document.getElementById('printReceiptBtn');
-    if (printBtn) { printBtn.addEventListener('click', window.print); }
+    if (printBtn) { printBtn.addEventListener('click', function () { window.print(); }); }
     
     var searchBtn = document.getElementById('searchMembersBtn');
     if (searchBtn) { searchBtn.addEventListener('click', searchMembers); }
