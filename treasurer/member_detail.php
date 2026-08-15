@@ -782,12 +782,35 @@ function viewReceipt(receiptNo) {
 
 function printReceipt(receiptNo) {
     if (!receiptNo) return;
-    const printWindow = window.open(
-        `<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(receiptNo)}&member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`,
-        'PrintReceipt',
-        'width=800,height=600'
-    );
+    // Print the receipt WITHOUT navigating to a separate page: reuse the HTML
+    // already loaded into the receipt modal and write it into a blank popup,
+    // which is also friendlier to popup blockers than window.open(url).
+    // When Print is triggered from the transaction-history table (modal not
+    // yet opened), fall back to a single fetch so it always works.
+    const el = document.getElementById('receiptContent');
+    if (currentReceiptNo === receiptNo && el && !el.innerHTML.includes('spinner-border') && el.innerHTML.trim()) {
+        printContentInPopup(el.innerHTML);
+        return;
+    }
+    fetch(`<?php echo APP_URL; ?>/api/transactions.php?action=member_receipt&receipt_no=${encodeURIComponent(receiptNo)}&member_id=${encodeURIComponent('<?php echo htmlspecialchars($member_id); ?>')}`)
+        .then(response => response.text())
+        .then(html => {
+            if (el) el.innerHTML = html;
+            currentReceiptNo = receiptNo;
+            printContentInPopup(html);
+        })
+        .catch(() => {
+            if (el) el.innerHTML = '<div class="alert alert-danger">Error loading receipt</div>';
+        });
+}
+
+// Write the supplied (full <html>) receipt markup into a blank popup and print it.
+function printContentInPopup(html) {
+    const printWindow = window.open('', 'PrintReceipt', 'width=800,height=600');
     if (printWindow) {
+        printWindow.document.write(html);
+        printWindow.document.close();
+        printWindow.focus();
         printWindow.onload = function() {
             printWindow.print();
         };

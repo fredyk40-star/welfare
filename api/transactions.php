@@ -131,7 +131,7 @@ switch ($action) {
             $safe_filename = preg_replace('/[^a-zA-Z0-9_-]/', '_', $receipt_no);
             header('Content-Disposition: attachment; filename="receipt_' . $safe_filename . '.html"');
         }
-        renderReceipt($transaction, false, false);
+        renderReceipt($transaction, true, true);
         exit();
         
     case 'export_csv':
