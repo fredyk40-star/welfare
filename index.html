@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#1976d2">
+    <link rel="manifest" href="/manifest.json">
     <meta name="description" content="GYF Welfare Management System - Gentil Ministry & Prayer Camp">
     <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -82,6 +83,18 @@
     
     <!-- Scripts -->
     <script src="assets/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Service Worker Registration -->
+    <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/service-worker.js')
+                .catch(function(err) {
+                    console.warn('Service worker registration failed:', err);
+                });
+        });
+    }
+    </script>
     <script src="assets/js/main.js"></script>
     
     <script>
@@ -181,3 +194,4 @@
     })();
     </script>
 </html>
+

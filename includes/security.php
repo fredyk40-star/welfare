@@ -258,3 +258,4 @@ if (session_status() === PHP_SESSION_ACTIVE && function_exists('validateSessionF
     validateSessionFingerprint();
 }
 
+
