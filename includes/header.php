@@ -27,7 +27,7 @@ require_once __DIR__ . '/functions.php';
     <link rel="icon" type="image/png" href="<?php echo APP_URL; ?>/assets/images/favicon.png">
     <link rel="icon" type="image/png" sizes="192x192" href="<?php echo APP_URL; ?>/assets/icons/icon-192x192.png">
     <link rel="apple-touch-icon" href="<?php echo APP_URL; ?>/assets/icons/icon-192x192.png">
-    <script src="<?php echo APP_URL; ?>/assets/js/header-common.js"></script>
+    <script src="<?php echo APP_URL; ?>/assets/js/header-common.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/header-common.js'); ?>"></script>
 </head>
 <body>
     <!-- App splash (PWA startup flash guard) -->
