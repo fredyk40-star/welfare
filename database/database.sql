@@ -110,14 +110,6 @@ CREATE TABLE IF NOT EXISTS password_resets (
 INSERT INTO settings (id, annual_amount, monthly_amount) VALUES (1, 240.00, 20.00)
 ON DUPLICATE KEY UPDATE annual_amount = VALUES(annual_amount), monthly_amount = VALUES(monthly_amount);
 
--- NOTE: The treasurer account MUST be created manually after deployment.
--- Do NOT seed default credentials in source control.
--- Create via: INSERT INTO members (...) VALUES (...); with a strong password hash.
--- Or use the registration/admin provisioning flow with an env-driven password.
-VALUES ('GYF-ADMIN', 'System Treasurer', 'treasurer@gyf.org',
-        '$2y$10$8V7QfRQVB2qbQppPFropUeTAjAAP5229QVd7Of6i1Zd8w/Zt7y/vO',
-        NULL, '1990-01-01', 'Male', '0000000000', 'Admin Address', 'Emergency Contact', 'Relationship', '0000000000');
-
 
 -- Member status and deletion tracking
 ALTER TABLE members 
@@ -129,3 +121,34 @@ ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP NULL AFTER suspended_by,
 ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(20) NULL AFTER deleted_at,
 ADD INDEX IF NOT EXISTS idx_members_status (status);
 
+
+
+-- Executive tier columns
+ALTER TABLE members 
+ADD COLUMN IF NOT EXISTS executive_level ENUM('none','gold','silver') NOT NULL DEFAULT 'none' AFTER deleted_by,
+ADD COLUMN IF NOT EXISTS executive_promoted_at TIMESTAMP NULL AFTER executive_level,
+ADD COLUMN IF NOT EXISTS executive_promoted_by VARCHAR(20) NULL AFTER executive_promoted_at,
+ADD INDEX IF NOT EXISTS idx_executive_level (executive_level);
+
+-- Executive target amounts (global defaults)
+ALTER TABLE settings 
+ADD COLUMN IF NOT EXISTS executive_gold_annual DECIMAL(10,2) NOT NULL DEFAULT 500.00 AFTER monthly_amount,
+ADD COLUMN IF NOT EXISTS executive_gold_monthly DECIMAL(10,2) NOT NULL DEFAULT 50.00 AFTER executive_gold_annual,
+ADD COLUMN IF NOT EXISTS executive_silver_annual DECIMAL(10,2) NOT NULL DEFAULT 350.00 AFTER executive_gold_monthly,
+ADD COLUMN IF NOT EXISTS executive_silver_monthly DECIMAL(10,2) NOT NULL DEFAULT 35.00 AFTER executive_silver_annual;
+
+-- Seed executive targets into settings if missing
+INSERT INTO settings (id, annual_amount, monthly_amount, executive_gold_annual, executive_gold_monthly, executive_silver_annual, executive_silver_monthly)
+SELECT 1, 240.00, 20.00, 500.00, 50.00, 350.00, 35.00
+ON DUPLICATE KEY UPDATE 
+    executive_gold_annual = COALESCE(VALUES(executive_gold_annual), executive_gold_annual),
+    executive_gold_monthly = COALESCE(VALUES(executive_gold_monthly), executive_gold_monthly),
+    executive_silver_annual = COALESCE(VALUES(executive_silver_annual), executive_silver_annual),
+    executive_silver_monthly = COALESCE(VALUES(executive_silver_monthly), executive_silver_monthly);
+
+-- Per-year executive targets
+ALTER TABLE yearly_targets 
+ADD COLUMN IF NOT EXISTS executive_gold_annual DECIMAL(10,2) NOT NULL DEFAULT 500.00 AFTER monthly_amount,
+ADD COLUMN IF NOT EXISTS executive_gold_monthly DECIMAL(10,2) NOT NULL DEFAULT 50.00 AFTER executive_gold_annual,
+ADD COLUMN IF NOT EXISTS executive_silver_annual DECIMAL(10,2) NOT NULL DEFAULT 350.00 AFTER executive_gold_monthly,
+ADD COLUMN IF NOT EXISTS executive_silver_monthly DECIMAL(10,2) NOT NULL DEFAULT 35.00 AFTER executive_silver_annual;

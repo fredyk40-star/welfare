@@ -83,7 +83,7 @@ $annual_target = $settings['annual_amount'];
                                 <th>Monthly Status</th>
                                 <th>Yearly Progress</th>
                                 <th>Year Debt</th>
-                                <th>Actions</th>
+                                <th>Executive</th><th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -298,6 +298,67 @@ document.addEventListener('click', function (e) {
         }
         return;
     }
+
+    // Promote to executive
+    var promoteBtn = e.target.closest ? e.target.closest('[data-action="promote_gold"], [data-action="promote_silver"]') : null;
+    if (promoteBtn) {
+        e.preventDefault();
+        var memberId = promoteBtn.getAttribute('data-member-id');
+        var csrf = promoteBtn.getAttribute('data-csrf');
+        var level = promoteBtn.getAttribute('data-action') === 'promote_gold' ? 'gold' : 'silver';
+        if (!confirm('Promote member ' + memberId + ' to ' + level + ' executive?')) return;
+
+        var fd = new FormData();
+        fd.append('csrf_token', csrf);
+        fd.append('member_id', memberId);
+        fd.append('level', level);
+
+        fetch('<?php echo APP_URL; ?>/api/members.php?action=promote_executive', {
+            method: 'POST',
+            body: fd
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (d.success) {
+                location.reload();
+            } else {
+                alert(d.message || 'Promotion failed.');
+            }
+        })
+        .catch(function () {
+            alert('Network error. Please try again.');
+        });
+        return;
+    }
+
+    var demoteBtn = e.target.closest ? e.target.closest('[data-action="demote_executive"]') : null;
+    if (demoteBtn) {
+        e.preventDefault();
+        var memberId = demoteBtn.getAttribute('data-member-id');
+        var csrf = demoteBtn.getAttribute('data-csrf');
+        if (!confirm('Demote member ' + memberId + ' from executive to regular member?')) return;
+
+        var fd = new FormData();
+        fd.append('csrf_token', csrf);
+        fd.append('member_id', memberId);
+
+        fetch('<?php echo APP_URL; ?>/api/members.php?action=demote_executive', {
+            method: 'POST',
+            body: fd
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (d.success) {
+                location.reload();
+            } else {
+                alert(d.message || 'Demotion failed.');
+            }
+        })
+        .catch(function () {
+            alert('Network error. Please try again.');
+        });
+        return;
+    }
 });
 
 // Print members list
@@ -313,3 +374,5 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+
+

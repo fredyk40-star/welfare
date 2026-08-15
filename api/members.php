@@ -542,6 +542,72 @@ switch ($action) {
         echo json_encode($result);
         break;
 
+    case 'promote_executive':
+        if (!isTreasurer()) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit();
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+            exit();
+        }
+        if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+            exit();
+        }
+        if (!checkRateLimit($ip_address, 10, 300, '%promote%')) {
+            echo json_encode(['success' => false, 'message' => 'Rate limit exceeded. Please try again later.']);
+            exit();
+        }
+        $member_id = cleanInput($_POST['member_id'] ?? '');
+        $level = strtolower(cleanInput($_POST['level'] ?? ''));
+        if ($level !== 'gold' && $level !== 'silver') {
+            echo json_encode(['success' => false, 'message' => 'Invalid executive level.']);
+            exit();
+        }
+        $member_check = $db->prepare("SELECT full_name, email, executive_level FROM members WHERE member_id = :mid AND member_id != :tid");
+        $member_check->execute([':mid' => $member_id, ':tid' => TREASURER_MEMBER_ID]);
+        $member = $member_check->fetch();
+        if (!$member) {
+            echo json_encode(['success' => false, 'message' => 'Member not found.']);
+            exit();
+        }
+        $result = promoteToExecutive($db, $member_id, $level, $_SESSION['user_id']);
+        if ($result['success']) {
+            sendExecutivePromotionEmail($member['email'], $member['full_name'], $level);
+        }
+        echo json_encode($result);
+        break;
+
+    case 'demote_executive':
+        if (!isTreasurer()) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            exit();
+        }
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            echo json_encode(['success' => false, 'message' => 'Invalid request method']);
+            exit();
+        }
+        if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+            echo json_encode(['success' => false, 'message' => 'Invalid CSRF token']);
+            exit();
+        }
+        if (!checkRateLimit($ip_address, 10, 300, '%demote%')) {
+            echo json_encode(['success' => false, 'message' => 'Rate limit exceeded. Please try again later.']);
+            exit();
+        }
+        $member_id = cleanInput($_POST['member_id'] ?? '');
+        $member_check = $db->prepare("SELECT full_name FROM members WHERE member_id = :mid AND member_id != :tid");
+        $member_check->execute([':mid' => $member_id, ':tid' => TREASURER_MEMBER_ID]);
+        $member = $member_check->fetch();
+        if (!$member) {
+            echo json_encode(['success' => false, 'message' => 'Member not found.']);
+            exit();
+        }
+        $result = demoteFromExecutive($db, $member_id, $_SESSION['user_id']);
+        echo json_encode($result);
+        break;
+
     default:
         echo json_encode(['success' => false, 'message' => 'Invalid action']);
         exit();

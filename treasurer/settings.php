@@ -91,6 +91,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
         }
     }
+
+// Update executive targets
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'update_executive_targets') {
+    if (!validateCsrfToken($_POST['csrf_token'] ?? '')) {
+        $error = 'Invalid request. Please try again.';
+    } elseif (!checkRateLimit($_SESSION['user_id'] ?? getClientIp(), 5, 300, '%exec_target%')) {
+        $error = 'Too many updates. Please try again later.';
+    } else {
+        $gold_annual = filter_var($_POST['executive_gold_annual'] ?? '', FILTER_VALIDATE_FLOAT);
+        $gold_monthly = filter_var($_POST['executive_gold_monthly'] ?? '', FILTER_VALIDATE_FLOAT);
+        $silver_annual = filter_var($_POST['executive_silver_annual'] ?? '', FILTER_VALIDATE_FLOAT);
+        $silver_monthly = filter_var($_POST['executive_silver_monthly'] ?? '', FILTER_VALIDATE_FLOAT);
+
+        if ($gold_annual === false || $gold_monthly === false || $silver_annual === false || $silver_monthly === false) {
+            $error = 'Invalid amounts. Please enter positive numbers.';
+        } elseif ($gold_annual <= 0 || $gold_monthly <= 0 || $silver_annual <= 0 || $silver_monthly <= 0) {
+            $error = 'Amounts must be positive.';
+        } else {
+            $stmt = $db->prepare("UPDATE settings SET executive_gold_annual = :ga, executive_gold_monthly = :gm, executive_silver_annual = :sa, executive_silver_monthly = :sm WHERE id = 1");
+            if ($stmt->execute([':ga' => $gold_annual, ':gm' => $gold_monthly, ':sa' => $silver_annual, ':sm' => $silver_monthly])) {
+                logAudit($_SESSION['user_id'] ?? 'system', "Updated executive targets: Gold={$gold_annual}/{$gold_monthly}, Silver={$silver_annual}/{$silver_monthly}");
+                $success = 'Executive targets updated.';
+            } else {
+                $error = 'Failed to update executive targets.';
+            }
+        }
+    }
+}
 }
 
 // Load data
@@ -132,6 +160,52 @@ $current_target = getYearlyTarget($db, $current_year);
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary">Update <?php echo $current_year; ?> Target</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0">⭐ Executive Targets</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Set annual and monthly targets for Gold and Silver executives. When a member is promoted to executive, their contributions are tracked against these targets.</p>
+                <form method="POST" action="">
+                    <input type="hidden" name="action" value="update_executive_targets">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold text-warning">⭐ Gold Executive</label>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label for="executive_gold_annual" class="form-label">Annual (GH₵)</label>
+                                    <input type="number" class="form-control" id="executive_gold_annual" name="executive_gold_annual"
+                                           value="<?php echo htmlspecialchars($settings['executive_gold_annual'] ?? 500); ?>" step="0.01" min="0.01" max="1000000" required>
+                                </div>
+                                <div class="col-6">
+                                    <label for="executive_gold_monthly" class="form-label">Monthly (GH₵)</label>
+                                    <input type="number" class="form-control" id="executive_gold_monthly" name="executive_gold_monthly"
+                                           value="<?php echo htmlspecialchars($settings['executive_gold_monthly'] ?? 50); ?>" step="0.01" min="0.01" max="1000000" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold text-secondary">🥈 Silver Executive</label>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label for="executive_silver_annual" class="form-label">Annual (GH₵)</label>
+                                    <input type="number" class="form-control" id="executive_silver_annual" name="executive_silver_annual"
+                                           value="<?php echo htmlspecialchars($settings['executive_silver_annual'] ?? 350); ?>" step="0.01" min="0.01" max="1000000" required>
+                                </div>
+                                <div class="col-6">
+                                    <label for="executive_silver_monthly" class="form-label">Monthly (GH₵)</label>
+                                    <input type="number" class="form-control" id="executive_silver_monthly" name="executive_silver_monthly"
+                                           value="<?php echo htmlspecialchars($settings['executive_silver_monthly'] ?? 35); ?>" step="0.01" min="0.01" max="1000000" required>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-warning">Update Executive Targets</button>
                 </form>
             </div>
         </div>

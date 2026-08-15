@@ -550,6 +550,25 @@ function sendReceiptEmail($member_email, $receipt_data, $member_photo = null, $t
     return sendEmail($member_email, $subject, $message, $treasurer_email);
 }
 
+function sendExecutivePromotionEmail($email, $full_name, $level) {
+    $safe_name = sanitizeEmailValue($full_name);
+    $safe_level = ucfirst($level);
+    $subject = 'Congratulations! You are now a ' . $safe_level . ' Executive - ' . APP_NAME;
+    $message = '<html><head><title>Executive Promotion</title></head><body>';
+    $message .= '<h2>Congratulations, ' . $safe_name . '!</h2>';
+    $message .= '<p>You have been promoted to <strong>' . $safe_level . ' Executive</strong> in the GYF Welfare Management System.</p>';
+    $message .= '<p>As a ' . $safe_level . ' Executive, your welfare contributions are now based on the executive targets:</p>';
+    $message .= '<ul>';
+    $message .= '<li><strong>Annual Target:</strong> Updated to the ' . $safe_level . ' executive annual amount</li>';
+    $message .= '<li><strong>Monthly Target:</strong> Updated to the ' . $safe_level . ' executive monthly amount</li>';
+    $message .= '</ul>';
+    $message .= '<p>Your payment history remains intact. Going forward, your contributions will be tracked against the executive targets.</p>';
+    $message .= '<p>If you have any questions, please contact the treasurer.</p>';
+    $message .= '<p>Regards,<br>' . APP_NAME . '</p>';
+    $message .= '</body></html>';
+    return sendEmail($email, $subject, $message);
+}
+
 function redirectTo($url) {
     $target = APP_URL . $url;
     if (!headers_sent()) {
@@ -773,6 +792,92 @@ function getMemberYearStats($db, $member_id, $year) {
         'pct' => $pct,
         'tx_count' => (int) ($row['tx_count'] ?? 0)
     ];
+}
+/**
+ * Get executive targets for a specific calendar year.
+ * Falls back to global settings if no yearly target exists.
+ *
+ * @return array{annual_amount: float, monthly_amount: float}
+ */
+function getExecutiveTargets($db, $year, $level) {
+    $year = (int) $year;
+    if ($level !== 'gold' && $level !== 'silver') {
+        return ['annual_amount' => 0.0, 'monthly_amount' => 0.0];
+    }
+    $suffix = $level === 'gold' ? 'executive_gold_' : 'executive_silver_';
+    $stmt = $db->prepare("SELECT `{$suffix}annual_amount`, `{$suffix}monthly_amount` FROM yearly_targets WHERE year = :yr");
+    $stmt->execute([':yr' => $year]);
+    $row = $stmt->fetch();
+    if ($row) {
+        return [
+            'annual_amount' => (float) ($row["{$suffix}annual_amount"] ?? 0.0),
+            'monthly_amount' => (float) ($row["{$suffix}monthly_amount"] ?? 0.0)
+        ];
+    }
+    $settings = $db->query("SELECT * FROM settings WHERE id = 1")->fetch();
+    if (!$settings) {
+        return ['annual_amount' => 0.0, 'monthly_amount' => 0.0];
+    }
+    return [
+        'annual_amount' => (float) ($settings["{$suffix}annual_amount"] ?? 0.0),
+        'monthly_amount' => (float) ($settings["{$suffix}monthly_amount"] ?? 0.0)
+    ];
+}
+
+/**
+ * Get the effective target for a member based on their executive level.
+ * Returns member targets for 'none', executive targets for gold/silver.
+ */
+function getMemberEffectiveTargets($db, $member_id, $year) {
+    $member = $db->prepare("SELECT executive_level FROM members WHERE member_id = :mid")->execute([':mid' => $member_id]);
+    $level = $member ? ($member['executive_level'] ?? 'none') : 'none';
+    if ($level === 'gold' || $level === 'silver') {
+        return getExecutiveTargets($db, $year, $level);
+    }
+    return getYearlyTarget($db, $year);
+}
+
+/**
+ * Get executive badge HTML.
+ */
+function getExecutiveBadge($level) {
+    if ($level === 'gold') {
+        return '<span class="badge bg-warning text-dark ms-1" title="Gold Executive">⭐ Gold Executive</span>';
+    }
+    if ($level === 'silver') {
+        return '<span class="badge bg-secondary ms-1" title="Silver Executive">🥈 Silver Executive</span>';
+    }
+    return '';
+}
+
+/**
+ * Promote a member to executive.
+ */
+function promoteToExecutive($db, $member_id, $level, $treasurer_id) {
+    $level = strtolower($level);
+    if ($level !== 'gold' && $level !== 'silver') {
+        return ['success' => false, 'message' => 'Invalid executive level.'];
+    }
+    $stmt = $db->prepare("UPDATE members SET executive_level = :lvl, executive_promoted_at = NOW(), executive_promoted_by = :tid WHERE member_id = :mid");
+    $ok = $stmt->execute([':lvl' => $level, ':tid' => $treasurer_id, ':mid' => $member_id]);
+    if ($ok) {
+        logAudit($treasurer_id, "Promoted member {$member_id} to {$level} executive");
+        return ['success' => true, 'message' => "Member promoted to {$level} executive."];
+    }
+    return ['success' => false, 'message' => 'Database error.'];
+}
+
+/**
+ * Demote a member from executive back to regular member.
+ */
+function demoteFromExecutive($db, $member_id, $treasurer_id) {
+    $stmt = $db->prepare("UPDATE members SET executive_level = 'none', executive_promoted_at = NULL, executive_promoted_by = NULL WHERE member_id = :mid");
+    $ok = $stmt->execute([':mid' => $member_id]);
+    if ($ok) {
+        logAudit($treasurer_id, "Demoted member {$member_id} from executive to regular member");
+        return ['success' => true, 'message' => 'Member demoted to regular member.'];
+    }
+    return ['success' => false, 'message' => 'Database error.'];
 }
 
 /**
@@ -1168,3 +1273,7 @@ function renderReceipt($transaction, $show_billing_period = true, $show_member_i
     include __DIR__ . '/../templates/receipt.php';
 }
 ?>
+
+
+
+

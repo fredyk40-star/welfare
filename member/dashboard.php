@@ -1,90 +1,5 @@
-<?php
-require_once __DIR__ . '/../includes/functions.php';
-require_once __DIR__ . '/../includes/security.php';
-
-// Check if user is member (must run before header.php outputs HTML)
-if (!isMember()) {
-    redirectTo('/member/login.php');
-}
-
-require_once __DIR__ . '/../includes/header.php';
-
-$database = new Database();
-$db = $database->getConnection();
-$member_id = $_SESSION['user_id'];
-
-// Get member details
-$member_query = "SELECT * FROM members WHERE member_id = :member_id";
-$member_stmt = $db->prepare($member_query);
-$member_stmt->execute([':member_id' => $member_id]);
-$member = $member_stmt->fetch();
-
-// Handle case where member record not found
-if (!$member) {
-    redirectTo('/api/auth.php?action=logout');
-}
-
-// Get payment statistics
-$current_year = date('Y');
-$current_month = date('m');
-
-// Total paid this year
-$yearly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-                 WHERE member_id = :member_id AND billing_cycle_year = :year
-                 AND status != 'void'";
-$yearly_stmt = $db->prepare($yearly_query);
-$yearly_stmt->execute([':member_id' => $member_id, ':year' => $current_year]);
-$yearly_total = $yearly_stmt->fetch()['total'];
-
-// Paid this month
-$monthly_query = "SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
-                  WHERE member_id = :member_id AND billing_cycle_month = :month AND billing_cycle_year = :year
-                  AND status != 'void'";
-$monthly_stmt = $db->prepare($monthly_query);
-$monthly_stmt->execute([':member_id' => $member_id, ':month' => $current_month, ':year' => $current_year]);
-$monthly_total = $monthly_stmt->fetch()['total'];
-
-// Get year-specific settings
-$settings = getYearlyTarget($db, $current_year);
-$annual_target = $settings['annual_amount'];
-$monthly_target = $settings['monthly_amount'];
-
-// Guard against division by zero
-if ($annual_target <= 0) $annual_target = 1;
-if ($monthly_target <= 0) $monthly_target = 1;
-
-// Calculate progress
-$yearly_percentage = ($yearly_total / $annual_target) * 100;
-$remaining = max(0.0, $annual_target - $yearly_total);
-$year_debt = $remaining;
-
-// Get recent transactions
-$recent_query = "SELECT * FROM transactions 
-                 WHERE member_id = :member_id AND status != 'void'
-                 ORDER BY transaction_date DESC LIMIT 5";
-$recent_stmt = $db->prepare($recent_query);
-$recent_stmt->execute([':member_id' => $member_id]);
-$recent_transactions = $recent_stmt->fetchAll();
-
-// Get months paid this year
-$months_query = "SELECT DISTINCT billing_cycle_month FROM transactions 
-                 WHERE member_id = :member_id AND billing_cycle_year = :year
-                 AND status != 'void'";
-$months_stmt = $db->prepare($months_query);
-$months_stmt->execute([':member_id' => $member_id, ':year' => $current_year]);
-$paid_months = $months_stmt->fetchAll(PDO::FETCH_COLUMN);
-?>
-
-<div class="row">
-    <div class="col-12">
-        <div class="d-flex flex-column flex-sm-row align-items-center align-items-sm-center text-center text-sm-start mb-4">
-            <?php if ($member['passport_photo']): ?>
-                <img src="<?php echo displayPhotoUrl($member['passport_photo']); ?>"
-                     class="member-photo member-photo-lg me-sm-3 mb-2 mb-sm-0" alt="Profile">
-            <?php endif; ?>
-            <div>
-                <h2 class="mb-0">Welcome, <?php echo htmlspecialchars($member['full_name']); ?></h2>
                 <p class="text-muted mb-0">Member ID: <?php echo htmlspecialchars($member['member_id']); ?></p>
+                <?php echo getExecutiveBadge($member["executive_level"] ?? "none"); ?>
                 <?php if ($yearly_total >= $annual_target): ?>
                     <span class="badge bg-success mt-1">✅ Annual Target Reached</span>
                 <?php else: ?>
@@ -320,3 +235,4 @@ function printReceipt() {
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+

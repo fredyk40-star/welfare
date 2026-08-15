@@ -23,7 +23,7 @@ switch ($action) {
             echo json_encode(['success' => false, 'message' => 'Invalid transaction ID']);
             exit();
         }
-        $query = "SELECT t.id, t.receipt_no, t.member_id, t.treasurer_id, t.amount, t.payment_method, t.billing_cycle_month, t.billing_cycle_year, t.notes, t.status, t.transaction_date, m.full_name, m.member_id as m_id 
+        $query = "SELECT t.id, t.receipt_no, t.member_id, t.treasurer_id, t.amount, t.payment_method, t.billing_cycle_month, t.billing_cycle_year, t.notes, t.status, t.transaction_date, m.full_name, m.member_id as m_id, m.executive_level 
                   FROM transactions t 
                   JOIN members m ON t.member_id = m.member_id 
                   WHERE t.id = :id";
@@ -36,7 +36,7 @@ switch ($action) {
                 exit();
             }
             // Whitelist response fields to avoid leaking internal data
-            $allowed = ['id', 'receipt_no', 'member_id', 'amount', 'payment_method', 'billing_cycle_month', 'billing_cycle_year', 'notes', 'status', 'transaction_date', 'full_name'];
+            $allowed = ['id', 'receipt_no', 'member_id', 'amount', 'payment_method', 'billing_cycle_month', 'billing_cycle_year', 'notes', 'status', 'transaction_date', 'full_name', 'executive_level'];
             $safe = array_intersect_key($transaction, array_flip($allowed));
             echo json_encode(['success' => true, 'transaction' => $safe]);
         } else {
@@ -56,7 +56,7 @@ switch ($action) {
         
         $transaction_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
         
-        $query = "SELECT t.*, m.full_name, m.member_id as m_id 
+        $query = "SELECT t.*, m.full_name, m.member_id as m_id, m.executive_level 
                   FROM transactions t 
                   JOIN members m ON t.member_id = m.member_id 
                   WHERE t.id = :id";
@@ -326,7 +326,7 @@ switch ($action) {
         $history = $stmt->fetchAll();
         
         // Whitelist response fields
-        $allowed = ['id', 'receipt_no', 'member_id', 'amount', 'payment_method', 'billing_cycle_month', 'billing_cycle_year', 'notes', 'status', 'transaction_date', 'full_name'];
+        $allowed = ['id', 'receipt_no', 'member_id', 'amount', 'payment_method', 'billing_cycle_month', 'billing_cycle_year', 'notes', 'status', 'transaction_date', 'full_name', 'executive_level'];
         $safe_history = [];
         foreach ($history as $row) {
             $safe_history[] = array_intersect_key($row, array_flip($allowed));
@@ -511,7 +511,7 @@ switch ($action) {
             echo json_encode(['success' => false, 'message' => 'Access denied']);
             exit();
         }
-        $stmt = $db->query("SELECT t.id, t.receipt_no, t.member_id, t.amount, t.payment_method, t.billing_cycle_month, t.billing_cycle_year, t.transaction_date, m.full_name FROM transactions t JOIN members m ON t.member_id = m.member_id WHERE t.status != 'void' ORDER BY t.id DESC LIMIT 1");
+        $stmt = $db->query("SELECT t.id, t.receipt_no, t.member_id, t.amount, t.payment_method, t.billing_cycle_month, t.billing_cycle_year, t.transaction_date, m.full_name, m.executive_level FROM transactions t JOIN members m ON t.member_id = m.member_id WHERE t.status != 'void' ORDER BY t.id DESC LIMIT 1");
         $last = $stmt->fetch();
         if ($last) {
             $allowed = ['id', 'receipt_no', 'member_id', 'amount', 'payment_method', 'billing_cycle_month', 'billing_cycle_year', 'transaction_date', 'full_name'];
@@ -526,3 +526,4 @@ switch ($action) {
         exit();
 }
 ?>
+
