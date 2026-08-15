@@ -307,6 +307,15 @@ switch ($action) {
             exit();
         }
 
+
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($_FILES['csv_file']['tmp_name']);
+        $allowed = ['text/plain', 'text/csv', 'application/csv', 'application/vnd.ms-excel'];
+        if (!in_array($mime, $allowed, true)) {
+            echo json_encode(['success' => false, 'message' => 'Invalid file type. Please upload a CSV file.']);
+            exit();
+        }
+
         $handle = fopen($_FILES['csv_file']['tmp_name'], 'r');
         if ($handle === false) {
             echo json_encode(['success' => false, 'message' => 'Could not read file']);

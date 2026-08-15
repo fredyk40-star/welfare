@@ -101,3 +101,4 @@ AddDefaultCharset UTF-8
     php_flag display_startup_errors Off
     php_value error_reporting 0
 </IfModule>
+

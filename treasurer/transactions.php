@@ -151,7 +151,7 @@ if (isset($_GET['search'])) {
                     WHERE (member_id LIKE :search1 OR full_name LIKE :search2 OR phone LIKE :search3)
                     AND member_id != :treasurer_id";
     $search_stmt = $db->prepare($search_query);
-    $search_param = "%{$search_term}%";
+    $escaped_search = str_replace(["\\", "%", "_"], ["\\\\", "\\%", "\\_"], $search_term); $search_param = "%{$escaped_search}%";
     $search_stmt->execute([
         ':search1' => $search_param,
         ':search2' => $search_param,
@@ -1656,3 +1656,4 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 </style>
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+

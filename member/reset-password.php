@@ -1,4 +1,5 @@
 <?php
+header('Referrer-Policy: no-referrer');
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/security.php';
 
@@ -193,3 +194,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($token)) {
     </script>
 </body>
 </html>
+

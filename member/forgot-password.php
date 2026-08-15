@@ -1,4 +1,5 @@
 <?php
+header('Referrer-Policy: no-referrer');
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/security.php';
 
@@ -203,3 +204,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <script src="<?php echo APP_URL; ?>/assets/js/slideshow.js"></script>
 </body>
 </html>
+

@@ -110,9 +110,10 @@ CREATE TABLE IF NOT EXISTS password_resets (
 INSERT INTO settings (id, annual_amount, monthly_amount) VALUES (1, 240.00, 20.00)
 ON DUPLICATE KEY UPDATE annual_amount = VALUES(annual_amount), monthly_amount = VALUES(monthly_amount);
 
--- Insert default treasurer account (password: Welfare2024!)
--- Password hash corresponds to 'Welfare2024!' in the canonical seed.
-INSERT IGNORE INTO members (member_id, full_name, email, password, two_fa_secret, dob, gender, phone, address, emergency_contact_name, emergency_contact_relationship, emergency_contact_phone)
+-- NOTE: The treasurer account MUST be created manually after deployment.
+-- Do NOT seed default credentials in source control.
+-- Create via: INSERT INTO members (...) VALUES (...); with a strong password hash.
+-- Or use the registration/admin provisioning flow with an env-driven password.
 VALUES ('GYF-ADMIN', 'System Treasurer', 'treasurer@gyf.org',
         '$2y$10$8V7QfRQVB2qbQppPFropUeTAjAAP5229QVd7Of6i1Zd8w/Zt7y/vO',
         NULL, '1990-01-01', 'Male', '0000000000', 'Admin Address', 'Emergency Contact', 'Relationship', '0000000000');

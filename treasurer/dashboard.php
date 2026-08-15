@@ -13,7 +13,7 @@ if (isset($_GET['ajax']) && $_GET['ajax'] == '1' && isset($_GET['search'])) {
     $db = $database->getConnection();
     
     $search_term = cleanInput($_GET['search']);
-    $search_param = "%{$search_term}%";
+    $escaped_search = str_replace(["\\", "%", "_"], ["\\\\", "\\%", "\\_"], $search_term); $search_param = "%{$escaped_search}%";
     $phone_where = "phone LIKE :search3";
     $phone_params = [];
     $variants = getPhoneSearchVariants($search_term);
@@ -122,7 +122,7 @@ try {
     $search_term = '';
     if (isset($_GET['search'])) {
         $search_term = cleanInput($_GET['search']);
-        $search_param = "%{$search_term}%";
+        $escaped_search = str_replace(["\\", "%", "_"], ["\\\\", "\\%", "\\_"], $search_term); $search_param = "%{$escaped_search}%";
         $phone_where = "phone LIKE :search3";
         $phone_params = [];
         $variants = getPhoneSearchVariants($search_term);
@@ -723,3 +723,4 @@ if (searchInput && searchResults) {
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+

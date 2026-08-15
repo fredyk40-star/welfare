@@ -56,6 +56,10 @@ if (!class_exists('DatabaseSessionHandler')) {
         public function write($id, $data): bool { $db = $this->ensureTable(); if (!$db) return false; $stmt = $db->prepare("REPLACE INTO sessions (id, data, last_activity) VALUES (:id, :data, :la)"); $ok = $stmt->execute([':id' => $id, ':data' => $data, ':la' => time()]); return $ok; }
         public function destroy($id): bool { $db = $this->ensureTable(); if (!$db) return false; $stmt = $db->prepare("DELETE FROM sessions WHERE id = :id"); $stmt->execute([':id' => $id]); return true; }
         public function gc($maxlifetime): int { $db = $this->ensureTable(); if (!$db) return 0; $stmt = $db->prepare("DELETE FROM sessions WHERE last_activity < :cut"); $stmt->execute([':cut' => time() - (int) $maxlifetime]); return $stmt->rowCount(); }
+        // Intentionally return empty string to let PHP generate the session ID.
+        // With session.use_strict_mode=1, PHP will create a new valid random ID.
+        // We do not need custom ID generation because the DatabaseSessionHandler
+        // already persists sessions reliably across serverless instances.
         public function create_sid() { return ''; }
         public function validateId($id) { return true; }
     }
