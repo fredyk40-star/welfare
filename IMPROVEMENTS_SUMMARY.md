@@ -263,3 +263,40 @@ All improvements maintain the high security standards:
 - Audit log viewer for transparency
 - Remember me for convenience
 - Better error messages (when implemented)
+### 13. Executive Tier System (Gold/Silver)
+**What:** Added executive membership tier with separate annual/monthly targets, promotion/demotion workflow, and automatic target switching.
+**Impact:** Members can be promoted to Gold or Silver executives with different contribution targets. Existing payment history is preserved and recalculated under executive targets. Promotion emails sent automatically.
+**Features:**
+- xecutive_level column on members (
+one/gold/silver)
+- Executive targets stored in settings and yearly_targets
+- Treasurer can promote/demote from members list
+- Annual limit checks use executive targets for gold/silver members
+- Progress bars and debt calculations update automatically
+- Executive badge shown on member dashboard and receipts
+
+### 14. PWA Offline Capability
+**What:** Upgraded service worker from network-only to cache-first app-shell strategy
+**Impact:** App works offline with cached shell. Icons fixed in manifest.json. Install prompt works correctly.
+
+### 15. Session Fingerprint Configurability
+**What:** Added SESSION_FINGERPRINT_ENABLED env flag to disable IP+UA binding
+**Impact:** Mobile users behind rotating NAT/proxies can stay logged in. Default is enabled.
+
+### 16. Security Audit Fixes
+**What:** Addressed findings from comprehensive security audit
+**Impact:** Removed hardcoded credentials, escaped SQL LIKE wildcards, added MIME validation for CSV imports, tightened .htaccess regex.
+
+## 🚀 Recent Changes (2026-08-15)
+
+- Switched email from Resend API to Gmail SMTP
+- Fixed cross-user session leaks with fingerprinting
+- Added private Vercel Blob proxy for member photos
+- Fixed register.php null reference crash
+- Fixed Illegal invocation errors in print handlers
+- Fixed PDO duplicate parameter errors in settings
+- Fixed phone validation to accept formatted numbers
+- Added scrollable table containers on all pages
+- Fixed splash screen to show only on cold start
+- Added executive tier with gold/silver targets
+- Updated all transaction/receipt flows for executive targets

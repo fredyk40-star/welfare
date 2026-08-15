@@ -548,7 +548,58 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
-<!-- Tips & Best Practices -->
+
+<!-- Executive Tier System -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0">⭐ Executive Tier System (Gold & Silver)</h5>
+            </div>
+            <div class="card-body">
+                <p>The system supports two executive tiers: <strong>Gold</strong> and <strong>Silver</strong>. Executives have separate annual and monthly contribution targets, which are usually higher than regular member targets.</p>
+                
+                <h6>How to promote a member to executive:</h6>
+                <ol>
+                    <li>Go to <a href="<?php echo APP_URL; ?>/treasurer/members.php">Members</a></li>
+                    <li>Find the member in the list</li>
+                    <li>Click the <strong>⭐ Gold</strong> or <strong>🥈 Silver</strong> button next to their name</li>
+                    <li>Confirm the promotion</li>
+                    <li>The member receives an automatic email notification</li>
+                </ol>
+                
+                <h6>How to set executive targets:</h6>
+                <ol>
+                    <li>Go to <a href="<?php echo APP_URL; ?>/treasurer/settings.php">Settings</a></li>
+                    <li>Scroll to the <strong>⭐ Executive Targets</strong> card</li>
+                    <li>Enter the annual and monthly amounts for Gold and Silver executives</li>
+                    <li>Click <strong>Update Executive Targets</strong></li>
+                </ol>
+                
+                <h6>How executive targets work:</h6>
+                <ul>
+                    <li>When a member is promoted to Gold or Silver, their contributions are automatically tracked against the executive targets instead of regular member targets</li>
+                    <li>If a member had already made payments before promotion, those payments carry over and are counted toward the new executive target</li>
+                    <li>The annual limit check in the Record Payment page uses the executive target for Gold/Silver members</li>
+                    <li>Progress bars, debt calculations, and defaulters list all respect the executive tier</li>
+                    <li>Executive badges appear on the member dashboard, members list, and receipts</li>
+                </ul>
+                
+                <h6>How to demote an executive:</h6>
+                <ol>
+                    <li>Go to <a href="<?php echo APP_URL; ?>/treasurer/members.php">Members</a></li>
+                    <li>Find the executive member</li>
+                    <li>Click the <strong>Demote</strong> button</li>
+                    <li>Confirm — the member returns to regular member status and regular targets apply</li>
+                </ol>
+                
+                <div class="alert alert-info">
+                    <strong>💡 Note:</strong> Executive targets are set per calendar year. You can configure different targets for each year in Settings.
+                </div>
+            </div>
+        </div>
+    </div>
+</div><!-- Tips & Best Practices -->
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
@@ -633,6 +684,7 @@ require_once __DIR__ . '/../includes/header.php';
 </div>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+
 
 
 
