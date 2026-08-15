@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/security.php';
+require_once __DIR__ . '/../includes/functions.php';
 
 // Check if user is treasurer
 if (!isTreasurer()) {
@@ -374,6 +374,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+
 
 
 

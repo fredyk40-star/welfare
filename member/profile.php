@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/security.php';
+require_once __DIR__ . '/../includes/functions.php';
 
 if (!isMember()) {
     redirectTo('/member/login.php');
@@ -177,3 +177,4 @@ $member = $stmt->fetch();
 </div>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+

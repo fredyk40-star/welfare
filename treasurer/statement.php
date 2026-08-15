@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/security.php';
+require_once __DIR__ . '/../includes/functions.php';
 
 // Check if user is logged in (treasurer or the member themselves)
 if (!isLoggedIn()) {
@@ -355,3 +355,4 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
+

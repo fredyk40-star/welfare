@@ -1272,8 +1272,3 @@ function renderReceipt($transaction, $show_billing_period = true, $show_member_i
     $date = $ts ? htmlspecialchars(date('F j, Y g:i A', $ts)) : 'N/A';
     include __DIR__ . '/../templates/receipt.php';
 }
-?>
-
-
-
-

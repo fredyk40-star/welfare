@@ -58,3 +58,4 @@ if (!empty($content_type)) {
 }
 header('Cache-Control: public, max-age=3600');
 echo $body;
+

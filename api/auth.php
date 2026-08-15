@@ -1,6 +1,6 @@
 <?php
-require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/security.php';
+require_once __DIR__ . '/../includes/functions.php';
 
 $action = isset($_GET['action']) ? cleanInput($_GET['action']) : '';
 $ip_address = getClientIp();
