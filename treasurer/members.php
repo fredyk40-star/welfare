@@ -142,7 +142,31 @@ $annual_target = $settings['annual_amount'];
                                         <?php endif; ?>
                                     </td>
                                     <td>
-                                        <?php echo getExecutiveBadge($member['executive_level'] ?? 'none'); ?>
+                                        <?php
+                                        $exec_level = $member['executive_level'] ?? 'none';
+                                        echo getExecutiveBadge($exec_level);
+                                        $exec_csrf = generateCsrfToken();
+                                        if ($exec_level === 'none'):
+                                        ?>
+                                            <div class="btn-group btn-group-sm mt-1" role="group">
+                                                <button type="button" class="btn btn-outline-warning btn-sm py-0 px-2"
+                                                        data-action="promote_gold"
+                                                        data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>"
+                                                        data-csrf="<?php echo $exec_csrf; ?>"
+                                                        title="Promote to Gold Executive">⭐ Gold</button>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2"
+                                                        data-action="promote_silver"
+                                                        data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>"
+                                                        data-csrf="<?php echo $exec_csrf; ?>"
+                                                        title="Promote to Silver Executive">🥈 Silver</button>
+                                            </div>
+                                        <?php elseif ($exec_level === 'gold' || $exec_level === 'silver'): ?>
+                                            <button type="button" class="btn btn-outline-success btn-sm mt-1 py-0 px-2"
+                                                    data-action="demote_executive"
+                                                    data-member-id="<?php echo htmlspecialchars($member['member_id']); ?>"
+                                                    data-csrf="<?php echo $exec_csrf; ?>"
+                                                    title="Demote from executive">◀ Demote</button>
+                                        <?php endif; ?>
                                     </td>
                                     <td>
                                          <div class="btn-group">
