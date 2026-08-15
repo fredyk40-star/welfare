@@ -428,6 +428,15 @@ switch ($action) {
                 $yearly_total = $yearly_stmt->fetch()['total'];
                 $year_target = getYearlyTarget($db, $billing_year);
                 $annual_limit = $year_target['annual_amount'];
+                $member_exec = $db->prepare("SELECT executive_level FROM members WHERE member_id = :mid")->execute([':mid' => $mid]);
+                $exec_level = $member_exec ? ($member_exec['executive_level'] ?? 'none') : 'none';
+                if ($exec_level === 'gold') {
+                    $annual_limit = $year_target['executive_gold_annual'];
+                } elseif ($exec_level === 'silver') {
+                    $annual_limit = $year_target['executive_silver_annual'];
+                } else {
+                    $annual_limit = $year_target['annual_amount'];
+                }
                 // Match the single "Record Payment" behaviour: only enforce the limit
                 // when one is actually configured. Previously a missing/zero annual_amount
                 // (the default) made EVERY batch payment fail the limit check.
@@ -526,4 +535,5 @@ switch ($action) {
         exit();
 }
 ?>
+
 

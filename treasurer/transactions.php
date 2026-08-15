@@ -62,7 +62,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     $error = 'Member not found.';
                 } else {
                     // Check annual limit (exclude voided transactions)
-                    $settings = getYearlyTarget($db, $billing_year);
+                    $annual_limit = $settings["annual_amount"];
+                    if (($member["executive_level"] ?? "none") === "gold") {
+                        $annual_limit = $settings["executive_gold_annual"];
+                    } elseif (($member["executive_level"] ?? "none") === "silver") {
+                        $annual_limit = $settings["executive_silver_annual"];
+                    }
                     $annual_limit = $settings['annual_amount'];
                     $yearly_total = 0;
                     if ($annual_limit > 0) {
