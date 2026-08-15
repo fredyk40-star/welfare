@@ -142,6 +142,9 @@ $annual_target = $settings['annual_amount'];
                                         <?php endif; ?>
                                     </td>
                                     <td>
+                                        <?php echo getExecutiveBadge($member['executive_level'] ?? 'none'); ?>
+                                    </td>
+                                    <td>
                                          <div class="btn-group">
                                              <a href="/treasurer/member_detail.php?member_id=<?php echo urlencode($member['member_id']); ?>" 
                                                 class="btn btn-sm btn-info">
@@ -298,6 +301,20 @@ document.addEventListener('click', function (e) {
         }
         return;
     }
+
+    // Make entire member row clickable to open member detail
+    document.querySelectorAll("#membersTable tbody tr").forEach(function(row) {
+        row.style.cursor = "pointer";
+        row.addEventListener("click", function(e) {
+            if (e.target.closest("button, a, input, select, textarea")) {
+                return;
+            }
+            var memberId = row.getAttribute("data-member-id");
+            if (memberId) {
+                window.location.href = "<?php echo APP_URL; ?>/treasurer/member_detail.php?member_id=" + encodeURIComponent(memberId);
+            }
+        });
+    });
 
     // Promote to executive
     var promoteBtn = e.target.closest ? e.target.closest('[data-action="promote_gold"], [data-action="promote_silver"]') : null;
