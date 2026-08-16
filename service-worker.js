@@ -1,8 +1,13 @@
-// GYF Welfare - Cache-first service worker with offline fallback.
-// Caches the app shell on install, serves from cache first, falls back to network.
-// Provides offline capability for the PWA.
+// GYF Welfare - Service worker.
+// Cache-first for the STATIC app shell ONLY (icons/css/js). All dynamic routes
+// (.php, /api/, /treasurer/, /member/) and navigations are served network-first
+// and are NEVER cached, so the treasurer dashboard / member pages always reflect
+// the latest TiDB Cloud data (e.g. a just-recorded payment) instead of a stale
+// copy frozen in the service-worker cache.
 
-const CACHE_NAME = 'gyf-welfare-v2';
+const CACHE_NAME = 'gyf-welfare-v3';
+
+// Static app shell - versioned by CACHE_NAME (bump to invalidate).
 const APP_SHELL = [
     '/',
     '/index.html',
@@ -20,66 +25,95 @@ const APP_SHELL = [
     '/assets/icons/icon-512x512.png',
 ];
 
-self.addEventListener('install', function(event) {
+// Dynamic routes that must ALWAYS hit the network and never be cached.
+function isDynamicPath(pathname) {
+    return (
+        pathname.length > 0 &&
+        (
+            pathname.endsWith('.php') ||
+            pathname.indexOf('/api/') === 0 ||
+            pathname.indexOf('/treasurer/') === 0 ||
+            pathname.indexOf('/member/') === 0
+        )
+    );
+}
+
+self.addEventListener('install', function (event) {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(function(cache) {
+            .then(function (cache) {
                 return cache.addAll(APP_SHELL);
             })
-            .then(function() {
+            .then(function () {
                 return self.skipWaiting();
             })
-            .catch(function(err) {
+            .catch(function (err) {
                 console.warn('SW install failed:', err);
             })
     );
 });
 
-self.addEventListener('activate', function(event) {
+self.addEventListener('activate', function (event) {
     event.waitUntil(
-        caches.keys().then(function(keys) {
+        caches.keys().then(function (keys) {
             return Promise.all(
-                keys.filter(function(key) {
+                keys.filter(function (key) {
                     return key !== CACHE_NAME;
-                }).map(function(key) {
+                }).map(function (key) {
                     return caches.delete(key);
                 })
             );
-        }).then(function() {
+        }).then(function () {
             return self.clients.claim();
         })
     );
 });
 
-self.addEventListener('fetch', function(event) {
-    var request = event.request;
-    var url = new URL(request.url);
+self.addEventListener('fetch', function (event) {
+    // Only intercept GET requests.
+    if (event.request.method !== 'GET') {
+        return;
+    }
 
-    // Skip non-GET requests
-    if (request.method !== 'GET') return;
+    var url = new URL(event.request.url);
 
-    // For same-origin requests, try cache first, then network
-    if (url.origin === self.location.origin) {
+    // Only handle same-origin requests.
+    if (url.origin !== self.location.origin) {
+        return;
+    }
+
+    // Network-first (never cached) for dynamic content and navigations.
+    if (isDynamicPath(url.pathname) || event.request.mode === 'navigate') {
         event.respondWith(
-            caches.match(request).then(function(cached) {
-                if (cached) {
-                    return cached;
+            fetch(event.request).catch(function () {
+                // Offline fallback for navigations: serve the app shell.
+                if (event.request.mode === 'navigate') {
+                    return caches.match('/index.html');
                 }
-                return fetch(request).then(function(response) {
-                    if (response && response.status === 200) {
-                        var clone = response.clone();
-                        caches.open(CACHE_NAME).then(function(cache) {
-                            cache.put(request, clone);
-                        });
-                    }
-                    return response;
-                }).catch(function() {
-                    // Offline fallback for navigation requests
-                    if (request.mode === 'navigate') {
-                        return caches.match('/index.html');
-                    }
-                });
             })
         );
+        return;
     }
+
+    // Cache-first for static app-shell assets.
+    event.respondWith(
+        caches.match(event.request).then(function (cached) {
+            if (cached) {
+                return cached;
+            }
+            return fetch(event.request).then(function (response) {
+                if (response && response.status === 200) {
+                    var clone = response.clone();
+                    caches.open(CACHE_NAME).then(function (cache) {
+                        cache.put(event.request, clone);
+                    });
+                }
+                return response;
+            }).catch(function () {
+                if (event.request.mode === 'navigate') {
+                    return caches.match('/index.html');
+                }
+            });
+        })
+    );
 });

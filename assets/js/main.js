@@ -129,3 +129,17 @@ document.addEventListener('click', function(e) {
         window.print();
     }
 });
+
+// --- BFCache recovery ---
+// When the user returns via the Back/Forward buttons, the browser may restore a
+// frozen (stale) copy of the page from the back-forward cache. The treasurer
+// dashboard re-computes debt from TiDB Cloud on every render, so a stale restore
+// would show outdated debt figures until a manual hard refresh. The headers in
+// config (security.php + api/index.php) already send Cache-Control: no-store, but
+// no-store does not reliably defeat the back-forward cache across browsers, so we
+// also force a server-side reload whenever the page is restored from bfcache.
+window.addEventListener('pageshow', function (event) {
+    if (event.persisted) {
+        window.location.reload();
+    }
+});

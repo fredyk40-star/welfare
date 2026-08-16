@@ -48,7 +48,7 @@ curl_close($ch);
 if ($err || $http_code < 200 || $http_code >= 300) {
     http_response_code($http_code >= 200 && $http_code < 600 ? $http_code : 502);
     header('Content-Type: application/json');
-    echo json_encode(['error' => 'Blob fetch failed', 'details' => $err]);
+    echo json_encode(['error' => 'Blob fetch failed']);
     exit;
 }
 

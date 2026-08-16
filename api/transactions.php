@@ -428,8 +428,10 @@ switch ($action) {
                 $yearly_total = $yearly_stmt->fetch()['total'];
                 $year_target = getYearlyTarget($db, $billing_year);
                 $annual_limit = $year_target['annual_amount'];
-                $member_exec = $db->prepare("SELECT executive_level FROM members WHERE member_id = :mid")->execute([':mid' => $mid]);
-                $exec_level = $member_exec ? ($member_exec['executive_level'] ?? 'none') : 'none';
+                $exec_stmt = $db->prepare("SELECT executive_level FROM members WHERE member_id = :mid");
+                $exec_stmt->execute([':mid' => $mid]);
+                $exec_row = $exec_stmt->fetch();
+                $exec_level = $exec_row ? ($exec_row['executive_level'] ?? 'none') : 'none';
                 if ($exec_level === 'gold') {
                     $annual_limit = $year_target['executive_gold_annual'];
                 } elseif ($exec_level === 'silver') {
